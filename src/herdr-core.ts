@@ -43,7 +43,36 @@ export class HerdrCore {
   constructor(
     private readonly exec: Exec = spawnExec,
     private readonly binary: string = join(homedir(), ".local", "bin", "hc"),
+    private readonly app: string = join(homedir(), ".local", "bin", "herdr-app"),
+    private readonly pause: (ms: number) => Promise<void> = (ms) => Bun.sleep(ms),
   ) {}
+
+  /** The app ignores the where label for tab names; name the tab holding the terminal. Never fails a launch. */
+  private async nameTab(paneId: string, name: string): Promise<void> {
+    try {
+      // The window learns of a new terminal shortly after hc starts it.
+      for (let attempt = 0; attempt < 10; attempt++) {
+        if (attempt > 0) await this.pause(200);
+        const listed = await this.exec(this.app, ["ls"]);
+        if (listed.code !== 0) throw new Error((listed.stderr || listed.stdout).trim() || `exit ${listed.code}`);
+        const spaces = object(JSON.parse(listed.stdout))["spaces"];
+        const tabs = (Array.isArray(spaces) ? spaces : []).flatMap((space) => {
+          const value = object(space)["tabs"];
+          return Array.isArray(value) ? value.map(object) : [];
+        });
+        const tab = tabs.find((t) => Array.isArray(t["terminals"]) &&
+          t["terminals"].some((term: unknown) => object(term)["terminal"] === paneId));
+        if (!tab) continue;
+        if (typeof tab["id"] !== "string") throw new Error("herdr-app listed a tab without an id");
+        const renamed = await this.exec(this.app, ["do", "tab.rename", "--id", tab["id"], "--name", name]);
+        if (renamed.code !== 0) throw new Error((renamed.stderr || renamed.stdout).trim() || `exit ${renamed.code}`);
+        return;
+      }
+      throw new Error("no app tab holds the terminal");
+    } catch (error) {
+      process.stderr.write(`dori: could not name the app tab of ${paneId} "${name}": ${error instanceof Error ? error.message : String(error)}\n`);
+    }
+  }
 
   private async call(argv: readonly string[]): Promise<string> {
     const result = await this.exec(this.binary, argv);
@@ -135,6 +164,7 @@ export class HerdrCore {
     const paneId = output["address"];
     if (typeof paneId !== "string" || !/^t[0-9a-z]+$/.test(paneId)) throw new Error("hc returned no local terminal address");
     this.launchShells.add(paneId);
+    await this.nameTab(paneId, label);
     return { paneId, tabId: paneId, workspaceId: space.id || workspaceId };
   }
 

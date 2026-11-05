@@ -20,6 +20,32 @@ export class FakeCore {
   readonly calls: (readonly string[])[] = [];
   fail = "";
   beforeGet: (() => void) | undefined;
+  /** The Herdr app window: each terminal hc starts gets its own numbered tab. */
+  readonly tabs = new Map<string, { id: string; name: string }>();
+  app: "ok" | "missing" | "fail" | "late" = "ok";
+
+  private appExec: Exec = async (_binary, argv) => {
+    if (this.app === "missing") throw new Error("ENOENT: herdr-app");
+    if (this.app === "fail") return { code: 1, stdout: "", stderr: "window closed" };
+    if (argv[0] === "ls") {
+      const shown = this.app === "late" ? [] : [...this.tabs];
+      if (this.app === "late") this.app = "ok";
+      return { code: 0, stderr: "", stdout: JSON.stringify({ spaces: [{ id: "sp", name: "forma-rs", tabs: shown.map(([terminal, tab]) => ({
+        id: tab.id, name: tab.name, terminals: [{ terminal, pane: `p-${terminal}` }],
+      })) }] }) };
+    }
+    if (argv[0] === "do" && argv[1] === "tab.rename" && argv[2] === "--id" && argv[4] === "--name") {
+      const tab = [...this.tabs.values()].find((t) => t.id === argv[3]);
+      if (!tab) return { code: 1, stdout: "", stderr: "no such tab" };
+      tab.name = argv[5] ?? "";
+      return { code: 0, stdout: "{}", stderr: "" };
+    }
+    throw new Error(`unhandled herdr-app command ${argv.join(" ")}`);
+  };
+
+  tabName(terminal: string): string | undefined {
+    return this.tabs.get(terminal)?.name;
+  }
 
   add(id = "t1"): CoreTerminal {
     const value: CoreTerminal = {
@@ -31,7 +57,8 @@ export class FakeCore {
     return value;
   }
 
-  exec: Exec = async (_binary, argv) => {
+  exec: Exec = async (binary, argv) => {
+    if (binary.endsWith("herdr-app")) return this.appExec(binary, argv);
     this.calls.push(argv);
     const [verb, id] = argv;
     const ok = (value: unknown) => ({ code: 0, stdout: JSON.stringify(value), stderr: "" });
@@ -56,6 +83,7 @@ export class FakeCore {
       });
       value.env = argv.slice(argv.indexOf("/usr/bin/env") + 1, -2);
       value.foreground = { name: "sh", argv: ["/bin/sh", "-i"] };
+      this.tabs.set(`t${this.terminals.size}`, { id: `tb${this.terminals.size}`, name: String(this.tabs.size + 1) });
       return ok({ address: `t${this.terminals.size}`, state: "live" });
     }
     if (verb === "get") this.beforeGet?.();

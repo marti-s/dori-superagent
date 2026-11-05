@@ -159,6 +159,9 @@ test("core up and start launch distinct grouped terminals with the configured ag
   expect(fake.terminals.get("t5")?.env).toContain("DORI_LANE=core-lane");
   expect(fake.terminals.get("t5")?.commands[0]).toContain("/custom/omo-claude");
   expect(resolveTarget(d, "t5")).toBe("t5");
+  expect(["t1", "t2", "t3", "t4", "t5"].map((t) => fake.tabName(t))).toEqual([
+    "lead", "duty", "duty-loop", "hourly-loop", "core-lane",
+  ]);
   await expect(core.run("t5", "another command")).rejects.toThrow("not a fresh launch shell");
   delete process.env["DORI_HERDR"];
   expect(defaultDeps().herdr).toBeInstanceOf(Herdr);
@@ -176,6 +179,43 @@ function spaceEnv(env: Record<string, string>): void {
   keys.forEach((key) => delete process.env[key]);
   Object.assign(process.env, env);
 }
+
+test("core names the app tab once the window lists the new terminal", async () => {
+  spaceEnv({});
+  const fake = new FakeCore();
+  fake.app = "late";
+  const pauses: number[] = [];
+  const core = new HerdrCore(fake.exec, "hc", "herdr-app", async (ms) => { pauses.push(ms); });
+  const lead = await core.createWorkspace("dori", "/tmp");
+  expect(fake.tabName(lead.paneId)).toBe("lead");
+  expect(pauses).toHaveLength(1);
+});
+
+test.each(["missing", "fail"] as const)("core still launches when herdr-app is %s, leaving the tab unnamed", async (app) => {
+  spaceEnv({});
+  const fake = new FakeCore();
+  fake.app = app;
+  const core = new HerdrCore(fake.exec, "hc", "herdr-app", async () => {});
+  const lead = await core.createWorkspace("dori", "/tmp");
+  await core.run(lead.paneId, "agent");
+  expect(fake.terminals.get(lead.paneId)?.commands).toHaveLength(1);
+  expect(fake.tabName(lead.paneId)).toBe("1");
+});
+
+test("core still launches when no app tab ever holds the terminal", async () => {
+  spaceEnv({});
+  const fake = new FakeCore();
+  const appCalls: string[] = [];
+  const lead = await new HerdrCore(async (binary, argv) => {
+    if (binary === "herdr-app") {
+      appCalls.push(argv[0] ?? "");
+      fake.tabs.clear();
+    }
+    return fake.exec(binary, argv);
+  }, "hc", "herdr-app", async () => {}).createWorkspace("dori", "/tmp");
+  expect(lead.paneId).toBe("t1");
+  expect(appCalls).toEqual(Array(10).fill("ls"));
+});
 
 function twoSpacesNamedFormaRs(env: Record<string, string>): FakeCore {
   spaceEnv(env);
