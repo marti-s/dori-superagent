@@ -75,6 +75,12 @@ export class HerdrCore {
   private async space(workspaceId: string): Promise<{ readonly id: string; readonly label: string }> {
     const cached = this.spaces.get(workspaceId);
     if (cached) return cached;
+    // Every Dori terminal lands in one space: an explicit DORI_HERDR_SPACE, else the space Dori is started from.
+    const preferred = await this.preferredSpace();
+    if (preferred) {
+      this.spaces.set(workspaceId, preferred);
+      return preferred;
+    }
     const list = object(JSON.parse(await this.call(["ls", "--json"])))["terminals"];
     if (!Array.isArray(list)) throw new Error("hc returned no terminal list");
     const candidates = list.map(object).filter((t) =>
@@ -92,6 +98,25 @@ export class HerdrCore {
       return resolved;
     }
     return { id: "", label: workspaceId };
+  }
+
+  private async preferredSpace(): Promise<{ readonly id: string; readonly label: string } | undefined> {
+    const id = process.env["DORI_HERDR_SPACE"];
+    if (id) {
+      const list = object(JSON.parse(await this.call(["ls", "--json"])))["terminals"];
+      if (!Array.isArray(list)) throw new Error("hc returned no terminal list");
+      for (const candidate of list.map(object)) {
+        if (typeof candidate["address"] !== "string") continue;
+        const value = await this.get(candidate["address"]);
+        if (value?.space === id) return { id, label: value.where.split(" / ")[0] || id };
+      }
+      throw new Error(`no hc terminal is in DORI_HERDR_SPACE ${id}`);
+    }
+    const self = process.env["HC_TERMINAL_ID"];
+    if (!self) return undefined;
+    const value = await this.get(self);
+    if (!value?.space) return undefined;
+    return { id: value.space, label: value.where.split(" / ")[0] || value.space };
   }
 
   async createTab(label: string, cwd: string, workspaceId = "dori", env: Record<string, string> = {}): Promise<PaneRef> {

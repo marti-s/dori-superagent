@@ -106,6 +106,7 @@ test("core refuses to deliver to exited terminals and closes live ones", async (
 });
 
 test("core parses screen text and rejects malformed protocol replies", async () => {
+  spaceEnv({});
   const fake = new FakeCore();
   fake.add().screen = "\x1b[32mWorking\x1b[0m";
   expect(await new HerdrCore(fake.exec).read("t1", 12)).toBe("Working");
@@ -116,7 +117,7 @@ test("core parses screen text and rejects malformed protocol replies", async () 
 });
 
 test("core up and start launch distinct grouped terminals with the configured agent and environment", async () => {
-  const keys = ["DORI_HERDR", "DORI_HOME", "DORI_AGENT_CMD", "DORI_TELEMETRY", "HERDR_WORKSPACE_ID"];
+  const keys = ["DORI_HERDR", "DORI_HOME", "DORI_AGENT_CMD", "DORI_TELEMETRY", "HERDR_WORKSPACE_ID", "DORI_HERDR_SPACE", "HC_TERMINAL_ID"];
   const previous = keys.map((key) => process.env[key]);
   const home = mkdtempSync(join(tmpdir(), "dori-core-test-"));
   onTestFinished(() => {
@@ -128,7 +129,7 @@ test("core up and start launch distinct grouped terminals with the configured ag
     rmSync(home, { recursive: true, force: true });
   });
   Object.assign(process.env, { DORI_HERDR: "core", DORI_HOME: home, DORI_AGENT_CMD: "/custom/omo-claude", DORI_TELEMETRY: "0" });
-  delete process.env["HERDR_WORKSPACE_ID"];
+  for (const key of ["HERDR_WORKSPACE_ID", "DORI_HERDR_SPACE", "HC_TERMINAL_ID"]) delete process.env[key];
   const deps = defaultDeps();
   expect(deps.herdr).toBeInstanceOf(HerdrCore);
   const fake = new FakeCore();
@@ -163,7 +164,68 @@ test("core up and start launch distinct grouped terminals with the configured ag
   expect(defaultDeps().herdr).toBeInstanceOf(Herdr);
 });
 
+/** Dori itself may run inside an hc terminal; keep its space settings out of these tests. */
+function spaceEnv(env: Record<string, string>): void {
+  const keys = ["DORI_HERDR_SPACE", "HC_TERMINAL_ID"];
+  const previous = keys.map((key) => process.env[key]);
+  onTestFinished(() => keys.forEach((key, index) => {
+    const value = previous[index];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }));
+  keys.forEach((key) => delete process.env[key]);
+  Object.assign(process.env, env);
+}
+
+function twoSpacesNamedFormaRs(env: Record<string, string>): FakeCore {
+  spaceEnv(env);
+  const fake = new FakeCore();
+  fake.add("t1").labels = { "herdr.space": "sp-old", where: "forma-rs / 1" };
+  fake.add("t2").labels = { "herdr.space": "sp-new", where: "forma-rs / 1" };
+  return fake;
+}
+
+async function placeAll(fake: FakeCore): Promise<string[]> {
+  const core = new HerdrCore(fake.exec);
+  const lead = await core.createWorkspace("dori", "/tmp");
+  await core.split(lead.paneId, "/tmp");
+  // A later process (start, or the hourly loop's lanes) resolves the space anew.
+  const lane = await new HerdrCore(fake.exec).createTab("lane", "/tmp", "dori");
+  await new HerdrCore(fake.exec).createTab("lane2", "/tmp", lead.workspaceId);
+  expect(lane.workspaceId).toBe(lead.workspaceId);
+  return [...fake.terminals.entries()].filter(([id]) => id !== "t1" && id !== "t2")
+    .map(([, t]) => `${t.labels["herdr.space"]} ${t.labels["where"]}`);
+}
+
+test("core places every terminal in DORI_HERDR_SPACE even when another space has the same name", async () => {
+  const fake = twoSpacesNamedFormaRs({ DORI_HERDR_SPACE: "sp-new", HC_TERMINAL_ID: "t1" });
+  expect(await placeAll(fake)).toEqual([
+    "sp-new forma-rs / dori-lead", "sp-new forma-rs / dori-hourly-loop",
+    "sp-new forma-rs / dori-lane", "sp-new forma-rs / dori-lane2",
+  ]);
+  expect(fake.terminals.get("t2")?.received).toEqual([]);
+});
+
+test("core places every terminal in the space of the terminal Dori is started from", async () => {
+  const fake = twoSpacesNamedFormaRs({ HC_TERMINAL_ID: "t2" });
+  expect(await placeAll(fake)).toEqual([
+    "sp-new forma-rs / dori-lead", "sp-new forma-rs / dori-hourly-loop",
+    "sp-new forma-rs / dori-lane", "sp-new forma-rs / dori-lane2",
+  ]);
+});
+
+test("core falls back to the first app space without DORI_HERDR_SPACE or HC_TERMINAL_ID", async () => {
+  const fake = twoSpacesNamedFormaRs({});
+  expect((await placeAll(fake)).every((t) => t.startsWith("sp-old forma-rs / "))).toBe(true);
+});
+
+test("core refuses a DORI_HERDR_SPACE no terminal is in", async () => {
+  const fake = twoSpacesNamedFormaRs({ DORI_HERDR_SPACE: "sp-missing" });
+  await expect(new HerdrCore(fake.exec).createWorkspace("dori", "/tmp")).rejects.toThrow("sp-missing");
+});
+
 test("core reuses existing app space labels without typing into its terminals", async () => {
+  spaceEnv({});
   const fake = new FakeCore();
   const existing = fake.add();
   existing.labels = { "herdr.space": "sp-existing", where: "work / existing" };
