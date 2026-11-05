@@ -134,6 +134,26 @@ dori done fix-flaky-login            # closes the lane's pane; only a READY lane
 
 `dori send <lead|duty|key|pane> --text '...'` delivers a message to a pane, or queues it when the pane is busy. `dori role <lead|duty> [PANE]` registers a pane by hand when you did not use `dori up`. `--text` can be left off to read the message from stdin. The commands the agents see are rendered with the full path to `src/cli.ts` and `DORI_HOME` set, so `dori` does not need to be on their PATH. Environment: `DORI_HOME` (state directory, default `~/.dori`), `DORI_AGENT_CMD` (default `omo`), `DORI_HERDR_SESSION` (a named herdr session), `DORI_CMD` (how the agents are told to call dori).
 
+### Running on herdr-core
+
+Set `DORI_HERDR=core` to use `~/.local/bin/hc`; leaving it unset keeps the original herdr adapter. With Herdr and its core server running:
+
+```sh
+cd /Users/martistaerfeldt/dev/dori-superagent
+export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"
+export DORI_HERDR=core DORI_TELEMETRY=0
+export DORI_AGENT_CMD=/Users/martistaerfeldt/.local/bin/omo-claude
+export DORI_HOME="$HOME/.dori-core"
+bun src/cli.ts up --cwd "$PWD"
+
+# Open a lane from a brief you have written:
+bun src/cli.ts start fix-login --brief /absolute/path/to/brief.md --cwd "$PWD"
+```
+
+Lead, duty, the duty loop, and the hourly loop each get a separate, uniquely named terminal. Core has no space-creation command: dori reuses an existing `dori` app space, or the first local app space, preserving its `herdr.space` label and using `where='<space> / dori-<tab>'`. With no app space, it uses `where='dori / dori-<tab>'`. `start --workspace <space-name-or-id>` chooses a space explicitly. The adapter passes the caller's `DORI_*` settings and PATH to new terminals, including agents and both loops.
+
+Core does not report omo's agent state, so dori reads its screen and foreground process: an empty omo input is idle, `Working` or `esc to interrupt` is busy, and a question or permission prompt is blocked. Unrecognized screens stay queued. Missing foreground metadata and shells hold agent messages; only the explicit `send --to-shell` opt-in types into a shell. `DORI_HERDR_SESSION` applies only to the original adapter.
+
 ## What the harness enforces
 
 One voice. The lead is the only session that talks to you (`prompts/lead.md`). The lane rules say every fact meant for the human goes to the lead (`prompts/lane-footer.md`, rule 3), and the duty session never merges and never talks to the human (`prompts/duty.md`). Everything a lane does reaches the lead pane as a prompt: `[START]`, `[REPORT]`, `[READY]`, `[LOST]`, `[ESCALATE]`.

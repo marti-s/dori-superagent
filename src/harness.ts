@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { DeliveryUncertain, Herdr, HerdrError, omoScreenIdle, shq, spawnExec, type AgentStatus, type Exec } from "./herdr.ts";
 import { KEY_RE, reservedKey, Store, type DeliveryAttempt, type HostLoad, type Lane, type QueuedMessage, type Role } from "./store.ts";
 import { Telemetry, type MergeOutcome, type Usage } from "./telemetry.ts";
+import { HerdrCore } from "./herdr-core.ts";
 
 export { KEY_RE, reservedKey };
 
@@ -14,7 +15,7 @@ const CLI = resolve(import.meta.dir, "cli.ts");
 
 export type Deps = {
   readonly store: Store;
-  readonly herdr: Herdr;
+  readonly herdr: Pick<Herdr, keyof Herdr>;
   readonly exec: Exec;
   readonly now: () => number;
   readonly agentCmd: string;
@@ -27,7 +28,7 @@ export const defaultDeps = (): Deps => {
   const store = new Store();
   return {
     store,
-    herdr: new Herdr(),
+    herdr: process.env["DORI_HERDR"] === "core" ? new HerdrCore() : new Herdr(),
     exec: spawnExec,
     now: Date.now,
     agentCmd: process.env["DORI_AGENT_CMD"] ?? "omo",
@@ -68,7 +69,8 @@ const prompt = (name: string, vars: Record<string, string>): string =>
 // ---------- pane messaging ----------
 
 export function resolveTarget(d: Deps, target: string): string {
-  if (/^w[0-9A-Za-z]+:p[0-9A-Za-z]+$/.test(target)) return target;
+  if (/^w[0-9A-Za-z]+:p[0-9A-Za-z]+$/.test(target) ||
+    (process.env["DORI_HERDR"] === "core" && /^t[0-9a-z]+$/.test(target))) return target;
   const roles = d.store.roles();
   if (target === "lead" || target === "duty") {
     const pane = roles[target];
