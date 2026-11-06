@@ -227,6 +227,16 @@ test("launch renames the tab holding the new terminal", async () => {
   expect(world.calls).toContainEqual(["herdr-app", "do", "tab.rename", "--id", `tab-${LANE_PANE}`, "--name", "named-lane"]);
 });
 
+test("launch names the tab once the window lists the new terminal, after it first lists none", async () => {
+  const brief = join(state.dir, "brief.md");
+  writeFileSync(brief, "# brief\n");
+  world.launchAddress = LANE_PANE;
+  world.appLateLists = 2;
+  await launchLane(depsFor(world, fakeClock(T0), state.dir), { key: "late-lane", title: "t", brief, done: "closed acme/app#3" });
+  expect(world.calls.filter((c) => c[0] === "herdr-app" && c[1] === "ls")).toHaveLength(3);
+  expect(world.calls).toContainEqual(["herdr-app", "do", "tab.rename", "--id", `tab-${LANE_PANE}`, "--name", "late-lane"]);
+});
+
 test("the harness launch record is not the lane's report: a silent launched lane is NO-REPORT, never posted", async () => {
   const brief = join(state.dir, "brief.md");
   writeFileSync(brief, "# brief\n");

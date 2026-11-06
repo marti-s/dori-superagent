@@ -49,6 +49,8 @@ export type World = {
   hcDown?: boolean;
   /** Every herdr-app command fails with exit 1, as when the window is not running. */
   appDown?: boolean;
+  /** How many `herdr-app ls` calls still list no tabs, as when the window has not yet seen a new terminal. */
+  appLateLists?: number;
   calls: string[][];
 };
 
@@ -117,6 +119,10 @@ export const fakeRunner = (w: World): Runner => async (argv) => {
     return ok(JSON.stringify({ address }));
   }
   if (cmd === "hc") return ok();
+  if (cmd === "herdr-app" && a1 === "ls" && w.appLateLists) {
+    w.appLateLists--;
+    return ok(JSON.stringify({ spaces: [] }));
+  }
   if (cmd === "herdr-app" && a1 === "ls") {
     const spaces = [...new Set(w.panes.map((p) => p.workspace_id))].map((space) => ({
       id: space, name: space,

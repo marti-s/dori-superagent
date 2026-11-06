@@ -136,7 +136,7 @@ const startLane = async (deps: FlowDeps, input: LaunchInput, draft: Lane, preamb
   // unknown key, so the lane is written before anything else (including the tab rename) can delay it.
   const lane: Lane = { ...draft, pane, tab: pane };
   await deps.registry.write(lane);
-  await nameTab(deps.run, pane, input.key);
+  await nameTab(deps.run, deps.clock, pane, input.key);
   // The launch is an activity record, not a report: it starts the journal (so the screen is watched for a stall) but is
   // never posted to the thread as if the agent had reported.
   new Reports(deps.config.stateDir).append({ type: "activity", key: lane.key, at: iso(deps.clock), state: "running", text: `lane launched in ${pane}` });

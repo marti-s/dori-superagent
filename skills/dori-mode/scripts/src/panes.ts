@@ -65,14 +65,23 @@ export const laneSpace = async (run: Runner, laneWorkspace: string, self = proce
   return { id, name: (id === ownId && ownName) || id };
 };
 
-/** Best effort: names the herdr-app tab holding the terminal. A failure is logged to stderr and returns false. */
-export const nameTab = async (run: Runner, address: string, name: string): Promise<boolean> => {
+const TAB_LOOKUPS = 10;
+
+/**
+ * Best effort: names the herdr-app tab holding the terminal. The window lists a new terminal shortly after hc starts
+ * it, so a missing tab is looked up again, 200 ms apart. A failure is logged to stderr and returns false.
+ */
+export const nameTab = async (run: Runner, clock: Clock, address: string, name: string): Promise<boolean> => {
   try {
-    const ls = await run(["herdr-app", "ls"]);
-    if (ls.code !== 0) throw new Error(ls.err || ls.out);
     type Tab = { id?: string; terminals?: { terminal?: string }[] };
-    const spaces = (JSON.parse(ls.out) as { spaces?: { tabs?: Tab[] }[] }).spaces ?? [];
-    const tab = spaces.flatMap((s) => s.tabs ?? []).find((t) => (t.terminals ?? []).some((x) => x.terminal === address));
+    let tab: Tab | undefined;
+    for (let attempt = 0; attempt < TAB_LOOKUPS && !tab; attempt++) {
+      if (attempt > 0) await clock.sleep(200);
+      const ls = await run(["herdr-app", "ls"]);
+      if (ls.code !== 0) throw new Error(ls.err || ls.out);
+      const spaces = (JSON.parse(ls.out) as { spaces?: { tabs?: Tab[] }[] }).spaces ?? [];
+      tab = spaces.flatMap((s) => s.tabs ?? []).find((t) => (t.terminals ?? []).some((x) => x.terminal === address));
+    }
     if (!tab?.id) throw new Error(`no tab holds ${address}`);
     const r = await run(["herdr-app", "do", "tab.rename", "--id", tab.id, "--name", name]);
     if (r.code !== 0) throw new Error(r.err || r.out);
