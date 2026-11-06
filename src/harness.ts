@@ -403,7 +403,7 @@ export async function headSha(d: Deps, pr: PrRef): Promise<string> {
 }
 
 /** Runs a fresh, non-interactive reviewer session pinned to the PR head and records its verdict as a receipt. */
-export async function review(d: Deps, prId: string, model?: string): Promise<{ verdict: "CLEAR" | "BLOCK"; sha: string }> {
+export async function review(d: Deps, prId: string, model?: string): Promise<{ verdict: "CLEAR" | "BLOCK"; sha: string; review: string }> {
   const pr = parsePr(prId);
   const sha = await headSha(d, pr);
   const text = prompt("review.md", { pr: pr.id, repo: pr.repo, number: String(pr.number), sha });
@@ -414,9 +414,12 @@ export async function review(d: Deps, prId: string, model?: string): Promise<{ v
   const last = verdicts.at(-1);
   if (!last) throw new Error("reviewer printed no VERDICT line; no receipt written");
   const verdict = last[1] as "CLEAR" | "BLOCK";
-  d.store.saveReceipt({ pr: pr.id, sha, verdict, model: model ?? "default", at: d.now(), summary: res.stdout.trim().slice(-4000) });
+  const full = res.stdout.trim();
+  // The verdict summary and the most severe findings come first, the VERDICT line last: keep both ends.
+  const summary = full.length <= 4000 ? full : `${full.slice(0, 2000)}\n[... see the full review ...]\n${full.slice(-1960)}`;
+  const receipt = d.store.saveReceipt({ pr: pr.id, sha, verdict, model: model ?? "default", at: d.now(), summary }, full);
   d.usage.record({ name: "dori.review_completed", verdict });
-  return { verdict, sha };
+  return { verdict, sha, review: receipt.review };
 }
 
 type Check = { name: string; bucket: string };

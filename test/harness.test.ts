@@ -247,6 +247,23 @@ describe("review + merge gate", () => {
     expect(w.usage.filter((e) => e.name === "dori.review_completed")).toHaveLength(2);
   });
 
+  test("a review longer than 4000 characters keeps its start: the full text is saved beside the receipt", async () => {
+    const { w, d } = setup();
+    gh(w, []);
+    const findings = Array.from({ length: 200 }, (_, i) => `MEDIUM src/f${i}.ts:${i} a finding long enough to fill the review`).join("\n");
+    const stdout = `SUMMARY: two blocking bugs\nHIGH src/a.ts:1 the most severe finding\n${findings}\nVERDICT: BLOCK`;
+    expect(stdout.length).toBeGreaterThan(4000);
+    w.reviewer = () => ({ code: 0, stdout });
+    const r = await review(d, "o/r#9");
+    const receipt = d.store.receipt("o/r#9", head)!;
+    expect(receipt.review).toBe(r.review);
+    expect(r.review.endsWith(`o__r_9@${head}.md`)).toBe(true);
+    expect(await Bun.file(r.review).text()).toBe(`${stdout}\n`);
+    expect(receipt.summary.length).toBeLessThanOrEqual(4000);
+    expect(receipt.summary.startsWith("SUMMARY: two blocking bugs\nHIGH src/a.ts:1 the most severe finding")).toBe(true);
+    expect(receipt.summary.endsWith("VERDICT: BLOCK")).toBe(true);
+  });
+
   test("a reviewer without a VERDICT line writes no receipt", async () => {
     const { w, d } = setup();
     gh(w, []);

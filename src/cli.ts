@@ -263,7 +263,7 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
     }
     case "review": {
       const r = await review(d, need(x, "PR"), one(a, "model"));
-      console.log(`REVIEW ${x} head=${r.sha} verdict=${r.verdict}`);
+      console.log(`REVIEW ${x} head=${r.sha} verdict=${r.verdict} review=${r.review}`);
       return r.verdict === "CLEAR" ? 0 : 1;
     }
     case "merge":

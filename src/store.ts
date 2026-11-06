@@ -34,7 +34,10 @@ export type ReviewReceipt = {
   verdict: "CLEAR" | "BLOCK";
   model: string;
   at: number;
+  /** The start and the end of the review, at most 4000 characters; the whole review is in `review`. */
   summary: string;
+  /** Path of the file holding the reviewer's full output. */
+  review: string;
 };
 
 export type ItemStatus = "open" | "running" | "done" | "dropped";
@@ -162,12 +165,19 @@ export class Store {
       .filter((p) => this.queued(p).length > 0);
   }
 
-  private receiptPath(pr: string, sha: string): string {
-    return join(this.root, "receipts", `${pr.replaceAll("/", "__").replace("#", "_")}@${sha}.json`);
+  private receiptPath(pr: string, sha: string, ext = "json"): string {
+    return join(this.root, "receipts", `${pr.replaceAll("/", "__").replace("#", "_")}@${sha}.${ext}`);
   }
 
-  saveReceipt(r: ReviewReceipt): void {
-    this.writeJson(this.receiptPath(r.pr, r.sha), r);
+  /** Writes the reviewer's full output beside the receipt, then the receipt pointing at it. */
+  saveReceipt(r: Omit<ReviewReceipt, "review">, fullText: string): ReviewReceipt {
+    const review = this.receiptPath(r.pr, r.sha, "md");
+    const tmp = `${review}.${process.pid}.tmp`;
+    writeFileSync(tmp, fullText.endsWith("\n") ? fullText : `${fullText}\n`);
+    renameSync(tmp, review);
+    const receipt = { ...r, review };
+    this.writeJson(this.receiptPath(r.pr, r.sha), receipt);
+    return receipt;
   }
 
   receipt(pr: string, sha: string): ReviewReceipt | undefined {
