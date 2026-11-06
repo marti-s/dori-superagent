@@ -279,6 +279,23 @@ describe("retiring finished lanes", () => {
     expect((await dutyTick(d)).filter((e) => e.action === "retired")).toEqual([]);
   });
 
+  test("an idle, waiting or READY-but-not-closed lane is never retired, however long it sits", async () => {
+    const { w, d, brief } = setup();
+    const idle = await startLane(d, "idle-lane", brief, { workspace: "w1" });
+    const waiting = await startLane(d, "waiting-lane", brief, { workspace: "w1" });
+    await report(d, "waiting-lane", "asked the lead a question", "waiting");
+    const readyLane = await startLane(d, "ready-lane", brief, { workspace: "w1" });
+    await ready(d, "ready-lane", "fixed", ["https://github.com/o/r/pull/2"]);
+    w.panes.get(waiting.paneId)!.status = "blocked";
+    w.clock += 24 * 60 * MIN;
+    expect((await dutyTick(d)).filter((e) => e.action === "retired")).toEqual([]);
+    for (const lane of [idle, waiting, readyLane]) {
+      expect(w.panes.get(lane.paneId)!.finished).toBeUndefined();
+      expect(w.closedTabs.has(`tab-${lane.paneId}`)).toBe(false);
+    }
+    expect(d.store.lanes().map((l) => l.closedAt)).toEqual([undefined, undefined, undefined]);
+  });
+
   test("a lane LOST to a finished terminal is retired after the delay too", async () => {
     const { w, d, brief } = setup();
     const lane = await startLane(d, "crashed", brief, { workspace: "w1" });
