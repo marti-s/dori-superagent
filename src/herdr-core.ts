@@ -43,7 +43,7 @@ export class HerdrCore {
   constructor(
     private readonly exec: Exec = spawnExec,
     private readonly binary: string = join(homedir(), ".local", "bin", "hc"),
-    private readonly app: string = join(homedir(), ".local", "bin", "herdr-app"),
+    private readonly app: string = process.env["DORI_HERDR_APP"] || join(homedir(), ".local", "bin", "herdr-app"),
     private readonly pause: (ms: number) => Promise<void> = (ms) => Bun.sleep(ms),
   ) {}
 
