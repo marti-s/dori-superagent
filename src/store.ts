@@ -169,12 +169,18 @@ export class Store {
     return join(this.root, "receipts", `${pr.replaceAll("/", "__").replace("#", "_")}@${sha}.${ext}`);
   }
 
-  /** Writes the reviewer's full output beside the receipt, then the receipt pointing at it. */
-  saveReceipt(r: Omit<ReviewReceipt, "review">, fullText: string): ReviewReceipt {
-    const review = this.receiptPath(r.pr, r.sha, "md");
+  /** Writes a reviewer's full output where its receipt goes (`<pr>@<sha>.md`), receipt or not, and returns the path. */
+  saveReviewOutput(pr: string, sha: string, fullText: string): string {
+    const review = this.receiptPath(pr, sha, "md");
     const tmp = `${review}.${process.pid}.tmp`;
     writeFileSync(tmp, fullText.endsWith("\n") ? fullText : `${fullText}\n`);
     renameSync(tmp, review);
+    return review;
+  }
+
+  /** Writes the reviewer's full output beside the receipt, then the receipt pointing at it. */
+  saveReceipt(r: Omit<ReviewReceipt, "review">, fullText: string): ReviewReceipt {
+    const review = this.saveReviewOutput(r.pr, r.sha, fullText);
     const receipt = { ...r, review };
     this.writeJson(this.receiptPath(r.pr, r.sha), receipt);
     return receipt;

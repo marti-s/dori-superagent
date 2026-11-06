@@ -19,6 +19,8 @@ export type Deps = {
   readonly exec: Exec;
   readonly now: () => number;
   readonly agentCmd: string;
+  /** How long one reviewer run may take before it is killed and the review fails. */
+  readonly reviewTimeoutMs: number;
   readonly doriCmd: string;
   readonly host: () => HostLoad;
   readonly usage: Usage;
@@ -32,6 +34,7 @@ export const defaultDeps = (): Deps => {
     exec: spawnExec,
     now: Date.now,
     agentCmd: process.env["DORI_AGENT_CMD"] ?? "omo",
+    reviewTimeoutMs: reviewTimeoutMinutes(process.env["DORI_REVIEW_TIMEOUT_MIN"]) * 60_000,
     doriCmd: process.env["DORI_CMD"] ?? `DORI_HOME=${shq(store.root)} bun ${shq(CLI)}`,
     host: () => ({ load1: loadavg()[0] ?? 0, cores: cpus().length, memFreePct: memFreePct() }),
     usage: new Telemetry(store.root),
@@ -39,6 +42,16 @@ export const defaultDeps = (): Deps => {
 };
 
 export class Refusal extends Error {}
+
+const REVIEW_TIMEOUT_MIN = 25;
+
+/** DORI_REVIEW_TIMEOUT_MIN as a positive number of minutes; unset means 25, anything else is refused. */
+export function reviewTimeoutMinutes(raw: string | undefined): number {
+  if (raw === undefined || raw === "") return REVIEW_TIMEOUT_MIN;
+  const minutes = Number(raw);
+  if (!Number.isFinite(minutes) || minutes <= 0) throw new Error(`DORI_REVIEW_TIMEOUT_MIN must be a positive number of minutes, not ${JSON.stringify(raw)}`);
+  return minutes;
+}
 
 const sysctlMemoryLevel = (): string => execFileSync("sysctl", ["-n", "kern.memorystatus_level"], { encoding: "utf8", timeout: 2000 });
 
@@ -408,13 +421,23 @@ export async function review(d: Deps, prId: string, model?: string): Promise<{ v
   const sha = await headSha(d, pr);
   const text = prompt("review.md", { pr: pr.id, repo: pr.repo, number: String(pr.number), sha });
   const argv = ["-p", "--no-session", ...(model ? ["--model", model] : []), text];
-  const res = await d.exec(d.agentCmd, argv);
-  if (res.code !== 0) throw new Error(`reviewer exited ${res.code}: ${res.stderr.trim()}`);
-  const verdicts = [...res.stdout.matchAll(/^VERDICT:\s*(CLEAR|BLOCK)\b/gm)];
-  const last = verdicts.at(-1);
-  if (!last) throw new Error("reviewer printed no VERDICT line; no receipt written");
-  const verdict = last[1] as "CLEAR" | "BLOCK";
-  const full = res.stdout.trim();
+  // A run without a VERDICT line is tried once more; its output is kept so the cause can be read.
+  let found: { verdict: "CLEAR" | "BLOCK"; full: string } | undefined;
+  for (let attempt = 1; attempt <= 2 && !found; attempt++) {
+    const res = await d.exec(d.agentCmd, argv, { timeoutMs: d.reviewTimeoutMs });
+    const out = res.stdout.trim();
+    if (res.timedOut) {
+      const kept = out ? `; its output so far: ${d.store.saveReviewOutput(pr.id, sha, out)}` : "";
+      throw new Error(`reviewer timed out after ${d.reviewTimeoutMs / 60_000} min; no receipt written${kept}`);
+    }
+    if (res.code !== 0) throw new Error(`reviewer exited ${res.code}: ${res.stderr.trim()}`);
+    const last = [...res.stdout.matchAll(/^VERDICT:\s*(CLEAR|BLOCK)\b/gm)].at(-1);
+    if (last) found = { verdict: last[1] as "CLEAR" | "BLOCK", full: out };
+    else if (attempt === 2) {
+      throw new Error(`reviewer printed no VERDICT line twice; no receipt written; its output: ${d.store.saveReviewOutput(pr.id, sha, out)}`);
+    } else d.store.saveReviewOutput(pr.id, sha, out);
+  }
+  const { verdict, full } = found!;
   // The verdict summary and the most severe findings come first, the VERDICT line last: keep both ends.
   const summary = full.length <= 4000 ? full : `${full.slice(0, 2000)}\n[... see the full review ...]\n${full.slice(-1960)}`;
   const receipt = d.store.saveReceipt({ pr: pr.id, sha, verdict, model: model ?? "default", at: d.now(), summary }, full);

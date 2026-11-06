@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Deps } from "../src/harness.ts";
 import { HerdrCore } from "../src/herdr-core.ts";
-import type { AgentStatus, Exec, ExecResult } from "../src/terminal.ts";
+import type { AgentStatus, Exec, ExecOptions, ExecResult } from "../src/terminal.ts";
 import { Store, type HostLoad } from "../src/store.ts";
 import type { DutyCounts, TelemetryEvent, Usage } from "../src/telemetry.ts";
 import { idleScreen } from "./fake-core.ts";
@@ -55,7 +55,7 @@ export class World {
     duty: (c) => { this.dutyCounts.push(c); },
     flush: async () => {},
   };
-  reviewer: (argv: readonly string[]) => { code: number; stdout: string } = () => ({ code: 0, stdout: "VERDICT: CLEAR" });
+  reviewer: (argv: readonly string[], opts?: ExecOptions) => { code: number; stdout: string; timedOut?: boolean } = () => ({ code: 0, stdout: "VERDICT: CLEAR" });
 
   addPane(id: string, status: AgentStatus = "idle"): Pane {
     const p: Pane = { status, received: [], ran: [] };
@@ -79,11 +79,11 @@ export class World {
     return ok({});
   }
 
-  exec: Exec = async (cmd, argv) => {
+  exec: Exec = async (cmd, argv, opts) => {
     this.calls.push({ cmd, argv });
     if (cmd === "gh") return { ...this.gh(argv), stderr: "" };
     if (cmd === "herdr-app") return this.app(argv);
-    if (cmd !== "hc") return { ...this.reviewer(argv), stderr: "" };
+    if (cmd !== "hc") return { ...this.reviewer(argv, opts), stderr: "" };
     const [verb, id] = argv;
     if (verb === "ls") return ok({ terminals: [] });
     if (verb === "run") {
@@ -132,6 +132,7 @@ export class World {
       exec: this.exec,
       now: () => this.clock,
       agentCmd: "omo",
+      reviewTimeoutMs: 25 * 60_000,
       doriCmd: "dori",
       host: () => this.host,
       usage: this.recorder,

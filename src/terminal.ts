@@ -1,17 +1,34 @@
 // What the harness needs from a terminal backend, and the delivery rules every backend shares. Every command goes
 // through one injectable `Exec`, so tests can replace the binaries with a recorder.
 
-export type ExecResult = { readonly code: number; readonly stdout: string; readonly stderr: string };
-export type Exec = (cmd: string, argv: readonly string[]) => Promise<ExecResult>;
+/** `timedOut`: the command was killed at its `timeoutMs`; `stdout` holds what it printed until then. */
+export type ExecResult = { readonly code: number; readonly stdout: string; readonly stderr: string; readonly timedOut?: boolean };
+export type ExecOptions = { readonly timeoutMs?: number };
+export type Exec = (cmd: string, argv: readonly string[], opts?: ExecOptions) => Promise<ExecResult>;
 
-export const spawnExec: Exec = async (cmd, argv) => {
-  const proc = Bun.spawn([cmd, ...argv], { stdout: "pipe", stderr: "pipe", stdin: "ignore" });
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { code, stdout, stderr };
+export const spawnExec: Exec = async (cmd, argv, opts = {}) => {
+  // A command with a deadline gets its own process group, so the kill also reaches its children: one left holding
+  // stdout open would keep the read below waiting.
+  const proc = Bun.spawn([cmd, ...argv], { stdout: "pipe", stderr: "pipe", stdin: "ignore", detached: opts.timeoutMs !== undefined });
+  let timedOut = false;
+  const timer = opts.timeoutMs === undefined ? undefined : setTimeout(() => {
+    timedOut = true;
+    try {
+      process.kill(-proc.pid, "SIGKILL");
+    } catch {
+      proc.kill("SIGKILL");
+    }
+  }, opts.timeoutMs);
+  try {
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    return { code, stdout, stderr, ...(timedOut ? { timedOut } : {}) };
+  } finally {
+    clearTimeout(timer);
+  }
 };
 
 /** A command that exited non-zero. The message carries argv (which may hold delivered text); `result` has its own output. */

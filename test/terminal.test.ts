@@ -1,6 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { HerdrCore } from "../src/herdr-core.ts";
-import { CommandError, interactiveShellInFront, shq, type ExecResult } from "../src/terminal.ts";
+import { CommandError, interactiveShellInFront, shq, spawnExec, type ExecResult } from "../src/terminal.ts";
+
+// The timeout itself is the behavior here, so this test runs real processes against a short deadline.
+test("spawnExec kills a command at its timeout and says so; a command that finishes in time is not marked", async () => {
+  const started = Date.now();
+  // The sleep is a child that holds stdout open, as an agent's own tools do; killing only the shell would hang here.
+  const slow = await spawnExec("/bin/sh", ["-c", "echo partial; sleep 30; echo never"], { timeoutMs: 200 });
+  expect(slow.timedOut).toBe(true);
+  expect(slow.stdout).toBe("partial\n");
+  expect(Date.now() - started).toBeLessThan(10_000);
+  const quick = await spawnExec("/bin/sh", ["-c", "echo done"], { timeoutMs: 10_000 });
+  expect(quick).toEqual({ code: 0, stdout: "done\n", stderr: "" });
+});
 
 describe("CommandError", () => {
   test("names the command and argv, and gives its own reason from stderr or else stdout", () => {

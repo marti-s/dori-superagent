@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { main } from "../src/cli.ts";
-import { done, dutyTick, mergeGate, ready, Refusal, report, review, send, startLane } from "../src/harness.ts";
+import { done, dutyTick, mergeGate, ready, Refusal, report, review, reviewTimeoutMinutes, send, startLane } from "../src/harness.ts";
 import { World } from "./fake.ts";
 
 function setup() {
@@ -264,11 +264,49 @@ describe("review + merge gate", () => {
     expect(receipt.summary.endsWith("VERDICT: BLOCK")).toBe(true);
   });
 
-  test("a reviewer without a VERDICT line writes no receipt", async () => {
+  test("a reviewer without a VERDICT line is tried once more, then fails with no receipt and its output kept", async () => {
     const { w, d } = setup();
     gh(w, []);
-    w.reviewer = () => ({ code: 0, stdout: "looks fine I guess" });
-    await expect(review(d, "o/r#8")).rejects.toThrow("no VERDICT");
+    let runs = 0;
+    w.reviewer = () => ({ code: 0, stdout: `looks fine I guess (run ${++runs})` });
+    const error = await review(d, "o/r#8").catch((e: unknown) => e);
+    expect(String(error)).toContain("no VERDICT line twice; no receipt written");
+    expect(runs).toBe(2);
     expect(d.store.receipt("o/r#8", head)).toBeUndefined();
+    const kept = String(error).split("its output: ")[1]!;
+    expect(kept.endsWith(`o__r_8@${head}.md`)).toBe(true);
+    expect(await Bun.file(kept).text()).toBe("looks fine I guess (run 2)\n");
+  });
+
+  test("a reviewer that prints its VERDICT on the retry gets a receipt", async () => {
+    const { w, d } = setup();
+    gh(w, []);
+    const outputs = ["the session ended early", "no findings\nVERDICT: CLEAR"];
+    w.reviewer = () => ({ code: 0, stdout: outputs.shift()! });
+    expect((await review(d, "o/r#10")).verdict).toBe("CLEAR");
+    expect(outputs).toEqual([]);
+    expect(await Bun.file(d.store.receipt("o/r#10", head)!.review).text()).toBe("no findings\nVERDICT: CLEAR\n");
+  });
+
+  test("a reviewer that hits its timeout fails the review with no receipt and no retry", async () => {
+    const { w, d } = setup();
+    gh(w, []);
+    const timeouts: (number | undefined)[] = [];
+    w.reviewer = (_argv, opts) => {
+      timeouts.push(opts?.timeoutMs);
+      return { code: 137, stdout: "HIGH src/a.ts:1 half a review", timedOut: true };
+    };
+    const error = await review(d, "o/r#11").catch((e: unknown) => e);
+    expect(String(error)).toContain("reviewer timed out after 25 min; no receipt written");
+    expect(timeouts).toEqual([25 * 60_000]);
+    expect(d.store.receipt("o/r#11", head)).toBeUndefined();
+    expect(await Bun.file(String(error).split("its output so far: ")[1]!).text()).toBe("HIGH src/a.ts:1 half a review\n");
+  });
+
+  test("DORI_REVIEW_TIMEOUT_MIN sets the reviewer timeout; unset is 25 minutes and a bad value is refused", () => {
+    expect(reviewTimeoutMinutes(undefined)).toBe(25);
+    expect(reviewTimeoutMinutes("40")).toBe(40);
+    expect(() => reviewTimeoutMinutes("0")).toThrow("positive number of minutes");
+    expect(() => reviewTimeoutMinutes("soon")).toThrow("positive number of minutes");
   });
 });
