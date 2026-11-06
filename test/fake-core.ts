@@ -1,4 +1,4 @@
-import type { Exec } from "../src/herdr.ts";
+import type { Exec } from "../src/terminal.ts";
 
 export const idleScreen = "────────────────────\n❯\n────────────────────\nmodel";
 

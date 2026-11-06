@@ -8,8 +8,8 @@ import { World } from "./fake.ts";
 function setup() {
   const w = new World();
   const d = w.deps();
-  const lead = w.addPane("w1:p1", "idle");
-  d.store.setRole("lead", "w1:p1");
+  const lead = w.addPane("t1", "idle");
+  d.store.setRole("lead", "t1");
   const brief = join(d.store.root, "brief.md");
   writeFileSync(brief, "Fix the flaky login test.");
   return { w, d, lead, brief };
@@ -35,7 +35,7 @@ describe("lanes", () => {
     }
     expect(w.calls).toEqual([]);
     expect(lead.received).toEqual([]);
-    expect(d.store.roles().lead).toBe("w1:p1");
+    expect(d.store.roles().lead).toBe("t1");
   });
 
   test("ready requires evidence, then reaches the lead; done closes only a ready lane", async () => {
@@ -64,55 +64,19 @@ describe("pane messaging", () => {
     expect(lead.received).toEqual([]);
     lead.status = "idle";
     const events = await dutyTick(d);
-    expect(events).toContainEqual({ pane: "w1:p1", action: "flushed" });
+    expect(events).toContainEqual({ pane: "t1", action: "flushed" });
     expect(lead.received).toHaveLength(1);
     expect(lead.received[0]).toContain("2 messages arrived while you were busy");
     expect(lead.received[0]).toContain("[REPORT a-lane] tests red, investigating");
     expect(lead.received[0]).toContain("second note");
   });
 
-  test("an omo pane that herdr refuses `agent prompt` for (agent_not_ready) still gets the text typed in", async () => {
-    const { w, d, lead } = setup();
-    w.promptFails.set("w1:p1", '{"error":{"code":"agent_not_ready"}}');
-    expect(await send(d, "lead", "hello\n\nlead", "cli")).toBe("DELIVERED");
-    expect(lead.received).toEqual(["hello / lead"]);
-    expect(w.calls).toContainEqual({ cmd: "herdr", argv: ["pane", "send-keys", "w1:p1", "enter"] });
-  });
-
-  test("a failing Enter is retried without typing the text again; after 3 failures it is thrown", async () => {
-    const { w, d, lead } = setup();
-    const enters = () => w.calls.filter((c) => c.argv[1] === "send-keys").length;
-    w.promptFails.set("w1:p1", '{"error":{"code":"agent_not_ready"}}');
-    w.keyFails = 2;
-    await d.herdr.deliver("w1:p1", "once");
-    expect(lead.received).toEqual(["once"]);
-    expect(enters()).toBe(3);
-    w.keyFails = 5;
-    await expect(d.herdr.deliver("w1:p1", "twice")).rejects.toThrow("key press failed");
-    expect(lead.received).toEqual(["once", "twice"]);
-    expect(enters()).toBe(6);
-  });
-
-  test("another `agent prompt` failure for a message that merely mentions agent_not_ready is still thrown", async () => {
-    const { w, d, lead } = setup();
-    w.promptFails.set("w1:p1", "herdr exploded");
-    await expect(d.herdr.deliver("w1:p1", "a lane quoted agent_not_ready here")).rejects.toThrow("herdr exploded");
-    expect(lead.received).toEqual([]);
-  });
-
-  test("the typed fallback trims leading and trailing newlines instead of leaving a dangling ' / '", async () => {
-    const { w, d, lead } = setup();
-    w.promptFails.set("w1:p1", '{"error":{"code":"agent_not_ready"}}');
-    await d.herdr.deliver("w1:p1", "\n\nhello\nworld\n\n");
-    expect(lead.received).toEqual(["hello / world"]);
-  });
-
-  test("agent_not_ready on a pane that is now a plain shell types nothing and reports not delivered", async () => {
+  test("delivery to a pane that is a plain shell types nothing and reports not delivered", async () => {
     const { w, d } = setup();
-    const shell = w.addPane("w1:p7", "shell");
-    w.promptFails.set("w1:p7", '{"error":{"code":"agent_not_ready"}}');
-    await expect(d.herdr.deliver("w1:p7", "rm -rf nothing")).resolves.toBe(false);
+    const shell = w.addPane("t7", "shell");
+    await expect(d.herdr.deliver("t7", "rm -rf nothing")).resolves.toBe(false);
     expect(shell.received).toEqual([]);
+    expect(w.calls.filter((c) => c.argv[0] === "send" || c.argv[0] === "keys")).toEqual([]);
   });
 
   test("unknown targets are refused instead of guessed", async () => {
@@ -146,13 +110,13 @@ describe("duty loop", () => {
 
   test("a failing inbox flush on one pane does not stop the loop for the other panes", async () => {
     const { w, d, lead } = setup();
-    const broken = w.addPane("w1:p9", "idle");
-    w.promptFails.set("w1:p9", "herdr exploded");
-    d.store.enqueue("w1:p9", { at: w.clock, from: "cli", text: "to broken" });
-    d.store.enqueue("w1:p1", { at: w.clock, from: "cli", text: "to lead" });
+    const broken = w.addPane("t9", "idle");
+    w.sendFails.set("t9", "hc exploded");
+    d.store.enqueue("t9", { at: w.clock, from: "cli", text: "to broken" });
+    d.store.enqueue("t1", { at: w.clock, from: "cli", text: "to lead" });
     const events = await dutyTick(d);
-    expect(events).toContainEqual({ pane: "w1:p9", action: "delivery-ambiguous", detail: expect.stringContaining("herdr exploded") });
-    expect(events).toContainEqual({ pane: "w1:p1", action: "flushed" });
+    expect(events).toContainEqual({ pane: "t9", action: "delivery-ambiguous", detail: expect.stringContaining("hc exploded") });
+    expect(events).toContainEqual({ pane: "t1", action: "flushed" });
     expect(lead.received).toHaveLength(1);
     expect(lead.received[0]).toContain("to lead");
     expect(broken.received).toEqual([]);
@@ -166,8 +130,8 @@ describe("duty loop", () => {
     w.panes.delete(lost.paneId);
     w.panes.get(stuck.paneId)!.status = "idle";
     w.panes.get(fine.paneId)!.status = "idle";
-    w.promptFails.set("w1:p1", "lead exploded");
-    w.promptFails.set(stuck.paneId, "stuck exploded");
+    w.sendFails.set("t1", "lead exploded");
+    w.sendFails.set(stuck.paneId, "stuck exploded");
     w.clock = fine.createdAt + 10 * 60_000;
     const events = await dutyTick(d);
     expect(events).toContainEqual({ lane: "lost-lane", action: "lane-failed", detail: expect.stringContaining("lead exploded") });
@@ -176,36 +140,20 @@ describe("duty loop", () => {
     expect(w.panes.get(fine.paneId)!.received.at(-1)).toContain("idle for 10 minutes");
   });
 
-  test("a LOST notice whose Enter failed once still reaches the lead on the next tick, exactly once", async () => {
-    const { w, d, lead, brief } = setup();
-    const gone = await startLane(d, "gone-lane", brief, { workspace: "w1" });
-    lead.received.length = 0;
-    w.panes.delete(gone.paneId);
-    w.promptFails.set("w1:p1", '{"error":{"code":"agent_not_ready"}}');
-    w.keyFails = 3;
-    expect(await dutyTick(d)).toContainEqual({ lane: "gone-lane", action: "lane-failed", detail: expect.stringContaining("key press failed") });
-    expect(lead.received.filter((m) => m.includes("[LOST gone-lane]"))).toHaveLength(1);
-    const events = await dutyTick(d);
-    expect(events).toContainEqual({ pane: "w1:p1", action: "flushed" });
-    expect(lead.received.filter((m) => m.includes("[LOST gone-lane]"))).toHaveLength(1);
-    expect(await dutyTick(d)).toEqual([]);
-    expect(lead.received.filter((m) => m.includes("[LOST gone-lane]"))).toHaveLength(1);
-  });
-
-  test("the delivery-ambiguous detail is herdr's first output line, never the queued message", async () => {
+  test("the delivery-ambiguous detail is hc's first output line, never the queued message", async () => {
     const { w, d } = setup();
-    w.addPane("w1:p9", "idle");
-    w.promptFails.set("w1:p9", "herdr exploded\nsecond line");
-    d.store.enqueue("w1:p9", { at: w.clock, from: "cli", text: "SECRET queued message" });
+    w.addPane("t9", "idle");
+    w.sendFails.set("t9", "hc exploded\nsecond line");
+    d.store.enqueue("t9", { at: w.clock, from: "cli", text: "SECRET queued message" });
     const events = await dutyTick(d);
-    expect(events).toEqual([{ pane: "w1:p9", action: "delivery-ambiguous", detail: "herdr exploded" }]);
+    expect(events).toEqual([{ pane: "t9", action: "delivery-ambiguous", detail: "hc exploded" }]);
   });
 
   test("the duty loop prints a delivery-ambiguous line with the reason", async () => {
     const { w, d } = setup();
-    w.addPane("w1:p9", "idle");
-    w.promptFails.set("w1:p9", "herdr exploded");
-    d.store.enqueue("w1:p9", { at: w.clock, from: "cli", text: "to broken" });
+    w.addPane("t9", "idle");
+    w.sendFails.set("t9", "hc exploded");
+    d.store.enqueue("t9", { at: w.clock, from: "cli", text: "to broken" });
     const lines: string[] = [];
     const log = console.log;
     console.log = (...a: unknown[]) => void lines.push(a.join(" "));
@@ -215,8 +163,8 @@ describe("duty loop", () => {
       console.log = log;
     }
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toStartWith("DUTY w1:p9 delivery-ambiguous: ");
-    expect(lines[0]).toContain("herdr exploded");
+    expect(lines[0]).toStartWith("DUTY t9 delivery-ambiguous: ");
+    expect(lines[0]).toContain("hc exploded");
   });
 
   test("kill switch: a stopped duty loop flushes, nudges and escalates nothing; resume delivers what was held", async () => {
@@ -246,7 +194,7 @@ describe("duty loop", () => {
 
     await main(["duty", "resume"], d);
     const events = await dutyTick(d);
-    expect(events).toContainEqual({ pane: "w1:p1", action: "flushed" });
+    expect(events).toContainEqual({ pane: "t1", action: "flushed" });
     expect(events).toContainEqual({ lane: "quiet", action: "nudge-1" });
     expect(lead.received).toEqual(["held note"]);
   });

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { cpus, freemem, loadavg, totalmem } from "node:os";
 import { join, resolve } from "node:path";
-import { DeliveryUncertain, Herdr, HerdrError, omoScreenIdle, shq, spawnExec, type AgentStatus, type Exec } from "./herdr.ts";
+import { CommandError, DeliveryUncertain, shq, spawnExec, type AgentStatus, type Exec, type TerminalBackend } from "./terminal.ts";
 import { KEY_RE, reservedKey, Store, type DeliveryAttempt, type HostLoad, type Lane, type QueuedMessage, type Role } from "./store.ts";
 import { Telemetry, type MergeOutcome, type Usage } from "./telemetry.ts";
 import { HerdrCore } from "./herdr-core.ts";
@@ -15,7 +15,7 @@ const CLI = resolve(import.meta.dir, "cli.ts");
 
 export type Deps = {
   readonly store: Store;
-  readonly herdr: Pick<Herdr, keyof Herdr>;
+  readonly herdr: TerminalBackend;
   readonly exec: Exec;
   readonly now: () => number;
   readonly agentCmd: string;
@@ -28,7 +28,7 @@ export const defaultDeps = (): Deps => {
   const store = new Store();
   return {
     store,
-    herdr: process.env["DORI_HERDR"] === "core" ? new HerdrCore() : new Herdr(),
+    herdr: new HerdrCore(),
     exec: spawnExec,
     now: Date.now,
     agentCmd: process.env["DORI_AGENT_CMD"] ?? "omo",
@@ -69,8 +69,6 @@ const prompt = (name: string, vars: Record<string, string>): string =>
 // ---------- pane messaging ----------
 
 export function resolveTarget(d: Deps, target: string): string {
-  if (/^w[0-9A-Za-z]+:p[0-9A-Za-z]+$/.test(target) ||
-    (process.env["DORI_HERDR"] === "core" && /^t[0-9a-z]+$/.test(target))) return target;
   const roles = d.store.roles();
   if (target === "lead" || target === "duty") {
     const pane = roles[target];
@@ -79,7 +77,9 @@ export function resolveTarget(d: Deps, target: string): string {
   }
   const lane = d.store.lane(target);
   if (lane && lane.status !== "done") return lane.paneId;
-  throw new Refusal(`unknown target ${target}: not a pane id, role or open lane`);
+  // A role or an open lane wins over an hc address, so a lane key such as `tests` still names its lane.
+  if (/^t[0-9a-z]+$/.test(target)) return target;
+  throw new Refusal(`unknown target ${target}: not an hc terminal address, role or open lane`);
 }
 
 // A pane with no running agent (`shell`) is never ready: text typed into a bare shell runs as a command (#66).
@@ -139,9 +139,8 @@ export async function flushInbox(d: Deps, paneId: string): Promise<"delivered" |
   if (all.length === 0) return "delivered";
   const queued = all.filter((m) => m.attempt?.state !== "ambiguous");
   if (queued.length === 0) return "held";
-  let status = await d.herdr.status(paneId);
+  const status = await d.herdr.status(paneId);
   if (status === "gone") throw new Refusal(`pane ${paneId} is gone; ${all.length} message(s) kept in its inbox`);
-  if (status === "working" && (await screenShowsIdle(d, paneId))) status = "idle";
   if (status === "shell") return "no-agent";
   if (!READY_TO_READ.includes(status)) return "queued";
   const typed = queued.filter((m) => m.attempt?.state === "typed");
@@ -192,24 +191,12 @@ async function recordUncertain(d: Deps, paneId: string, batch: readonly QueuedMe
   if (e.typed || batch.every((m) => m.from === NOTICE_FROM)) return;
   const which = batch.map((m) => `from ${m.from} queued ${new Date(m.at).toISOString()}`).join(", ");
   const text =
-    `[DELIVERY-AMBIGUOUS ${paneId}] ${batch.length} message(s) (${which}) may or may not have reached the pane; herdr said: ${detail}. ` +
+    `[DELIVERY-AMBIGUOUS ${paneId}] ${batch.length} message(s) (${which}) may or may not have reached the pane; hc said: ${detail}. ` +
     `Held and not resent. Check the pane; if it did not arrive, send it again with dori send. Then remove the held entry from ${d.store.inboxPath(paneId)}.`;
   try {
     await tellLead(d, text, NOTICE_FROM);
   } catch (err) {
     process.stderr.write(`dori: telling the lead about the ambiguous delivery to ${paneId} failed too (${failureDetail(err)}); the notice is kept in the lead's inbox\n`);
-  }
-}
-
-/**
- * herdr reports an omo with live monitors as `working` between turns (#62). Believe the screen only when it
- * positively shows the idle input; a failed read is doubt, so the message stays queued for the next duty pass.
- */
-async function screenShowsIdle(d: Deps, paneId: string): Promise<boolean> {
-  try {
-    return omoScreenIdle(await d.herdr.read(paneId, 30));
-  } catch {
-    return false;
   }
 }
 
@@ -314,10 +301,10 @@ export async function done(d: Deps, key: string): Promise<void> {
 
 export type DutyEvent = { lane?: string; pane?: string; action: string; detail?: string };
 
-/** A short one-line reason. A HerdrError message carries the whole argv (the queued text), so use herdr's own output. */
+/** A short one-line reason. A CommandError message carries the whole argv (the queued text), so use the command's own output. */
 function failureDetail(e: unknown): string {
   if (e instanceof DeliveryUncertain) e = e.failure;
-  const raw = e instanceof HerdrError ? e.result.stderr || e.result.stdout : e instanceof Error ? e.message : String(e);
+  const raw = e instanceof CommandError ? e.result.stderr || e.result.stdout : e instanceof Error ? e.message : String(e);
   const first = raw.trim().split("\n")[0] ?? "";
   return first.length > 200 ? `${first.slice(0, 200)}...` : first;
 }

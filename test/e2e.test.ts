@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { shq, spawnExec } from "../src/herdr.ts";
+import { shq } from "../src/terminal.ts";
 
 // Real hc (herdr-core), one isolated core per test, fake agent instead of a model: proves the terminal plumbing end to end.
 // Each core has its own HC_SESSION and scratch XDG paths, so it never sees the user's core or its terminals.
@@ -16,7 +16,7 @@ type Core = { readonly root: string; readonly home: string; readonly env: Record
 const cores: Core[] = [];
 
 // The caller's own hc, herdr and dori placement must not leak into the isolated runs.
-const leaked = ["HC_SESSION", "HC_SOCKET", "HC_TERMINAL_ID", "DORI_HERDR_SPACE", "DORI_HERDR_SESSION", "HERDR_WORKSPACE_ID"];
+const leaked = ["HC_SESSION", "HC_SOCKET", "HC_TERMINAL_ID", "DORI_HERDR_SPACE", "HERDR_WORKSPACE_ID"];
 const baseEnv = Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] =>
   e[1] !== undefined && !leaked.includes(e[0]) && !e[0].startsWith("XDG_")));
 
@@ -46,7 +46,7 @@ const isolatedCore = async (tag: string): Promise<Core> => {
   mkdirSync(home);
   const env = {
     ...baseEnv, ...xdg, HC_SESSION: `dori-e2e-${process.pid}-${tag}`,
-    DORI_HOME: home, DORI_HERDR: "core", DORI_TELEMETRY: "0",
+    DORI_HOME: home, DORI_TELEMETRY: "0",
     // A missing herdr-app: tab renames fail, are logged and never reach the user's Herdr window.
     DORI_HERDR_APP: join(root, "no-herdr-app"),
   };
@@ -99,7 +99,7 @@ const startLead = async (core: Core, name: string) => {
 };
 // The fake agent runs inside a core terminal, which gets the login environment rather than ours: name the core explicitly.
 const doriCmdFor = (core: Core) =>
-  `env ${["HC_SESSION", "XDG_STATE_HOME", "XDG_CONFIG_HOME", "XDG_RUNTIME_DIR", "XDG_DATA_HOME", "XDG_CACHE_HOME", "DORI_HOME", "DORI_HERDR", "DORI_TELEMETRY", "DORI_HERDR_APP"]
+  `env ${["HC_SESSION", "XDG_STATE_HOME", "XDG_CONFIG_HOME", "XDG_RUNTIME_DIR", "XDG_DATA_HOME", "XDG_CACHE_HOME", "DORI_HOME", "DORI_TELEMETRY", "DORI_HERDR_APP"]
     .map((k) => `${k}=${shq(core.env[k] ?? "")}`).join(" ")} ${shq(bun)} ${shq(cli)}`;
 
 test.skipIf(!hcBin)("a lane started in real hc reports and finishes; the lead terminal has no agent, so both wait in its inbox", async () => {

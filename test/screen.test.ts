@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { send } from "../src/harness.ts";
-import { omoScreenIdle } from "../src/herdr.ts";
+import { omoScreenIdle } from "../src/terminal.ts";
 import { World } from "./fake.ts";
 
-// Real omo screens captured with `herdr pane read --source recent`, sanitized (titles, costs, ids, paths replaced).
+// Real omo screens captured from live omo panes, sanitized (titles, costs, ids, paths replaced).
 const screen = (name: string) => Bun.file(join(import.meta.dir, "fixtures", "screens", `${name}.txt`)).text();
 
-describe("omoScreenIdle (#62: herdr reports an omo with live monitors as working)", () => {
+describe("omoScreenIdle (#62: an omo with live monitors between turns is idle)", () => {
   test("idle input rule between turns, monitors still live: idle", async () => {
     expect(omoScreenIdle(await screen("omo-idle-live-monitors"))).toBe(true);
   });
@@ -34,13 +34,14 @@ describe("omoScreenIdle (#62: herdr reports an omo with live monitors as working
   });
 });
 
-describe("delivery to a pane herdr calls working", () => {
+describe("delivery decided by the omo screen", () => {
   function setup(screenText?: string) {
     const w = new World();
     const d = w.deps();
-    const lead = w.addPane("w1:p1", "working");
+    const lead = w.addPane("t1", "working");
     lead.screen = screenText;
-    d.store.setRole("lead", "w1:p1");
+    lead.readFails = screenText === undefined;
+    d.store.setRole("lead", "t1");
     return { w, d, lead };
   }
 
@@ -54,7 +55,7 @@ describe("delivery to a pane herdr calls working", () => {
     const { w, d, lead } = setup(await screen("omo-turn"));
     expect(await send(d, "lead", "hello", "cli")).toBe("QUEUED");
     expect(lead.received).toEqual([]);
-    expect(w.calls.some((c) => c.argv[1] === "send-text" || c.argv[0] === "agent")).toBe(false);
+    expect(w.calls.some((c) => c.argv[0] === "send" || c.argv[0] === "keys")).toBe(false);
   });
 
   test("a failed screen read keeps the message queued", async () => {
@@ -63,10 +64,11 @@ describe("delivery to a pane herdr calls working", () => {
     expect(lead.received).toEqual([]);
   });
 
-  test("blocked is never read as idle, whatever the screen shows", async () => {
-    const { w, d, lead } = setup(await screen("omo-idle-live-monitors"));
-    lead.status = "blocked";
+  test("a question or permission prompt is blocked, never idle: the message is queued and nothing is typed", async () => {
+    const { w, d, lead } = setup("Question\nAllow this command? [y/n]");
+    expect(await d.herdr.status("t1")).toBe("blocked");
     expect(await send(d, "lead", "hello", "cli")).toBe("QUEUED");
-    expect(w.calls.some((c) => c.argv[1] === "read")).toBe(false);
+    expect(lead.received).toEqual([]);
+    expect(w.calls.some((c) => c.argv[0] === "send" || c.argv[0] === "keys")).toBe(false);
   });
 });

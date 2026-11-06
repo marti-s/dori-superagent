@@ -290,7 +290,7 @@ async function audit(d: Deps, run: LoopRun): Promise<void> {
     try {
       st = await d.herdr.status(lane.paneId);
     } catch (e) {
-      run.findings.push(`herdr: ${lane.key}: ${e instanceof Error ? e.message : String(e)}`);
+      run.findings.push(`hc: ${lane.key}: ${e instanceof Error ? e.message : String(e)}`);
       continue;
     }
     if (st === "gone") {

@@ -100,7 +100,7 @@ const FOOTER_MAX_LINES = 3;
 
 /**
  * True only when an omo screen positively shows its idle input at the bottom: a bare rule, an empty `❯` line, a bare
- * rule, at most FOOTER_MAX_LINES below it, and no `esc to interrupt` anywhere. Same rule as dori's src/herdr.ts.
+ * rule, at most FOOTER_MAX_LINES below it, and no `esc to interrupt` anywhere. Same rule as dori's src/terminal.ts.
  */
 export const omoScreenIdle = (screen: string): boolean => {
   if (screen.includes("esc to interrupt")) return false;
@@ -135,7 +135,7 @@ const runsCommand = (shell: string, arg: string): boolean =>
 // prompt after the command runs, so that shell is held.
 const keepsPrompt = (shell: string, arg: string): boolean => (shell === "pwsh" || shell === "powershell") && /^--?noe(x(i(t)?)?)?$/i.test(arg);
 
-/** True when the foreground process is an interactive shell, or there is none. Same rule as dori's src/herdr.ts. */
+/** True when the foreground process is an interactive shell, or there is none. Same rule as dori's src/terminal.ts. */
 export const interactiveShellInFront = (fg: Foreground | null): boolean => {
   const procs = fg ? [fg] : [];
   if (procs.length === 0) return true;

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { main } from "../src/cli.ts";
 import { defaultDeps, resolveTarget } from "../src/harness.ts";
 import { HerdrCore } from "../src/herdr-core.ts";
-import { DeliveryUncertain, Herdr } from "../src/herdr.ts";
+import { DeliveryUncertain } from "../src/terminal.ts";
 import { FakeCore, idleScreen } from "./fake-core.ts";
 
 test.each([
@@ -117,7 +117,7 @@ test("core parses screen text and rejects malformed protocol replies", async () 
 });
 
 test("core up and start launch distinct grouped terminals with the configured agent and environment", async () => {
-  const keys = ["DORI_HERDR", "DORI_HOME", "DORI_AGENT_CMD", "DORI_TELEMETRY", "HERDR_WORKSPACE_ID", "DORI_HERDR_SPACE", "HC_TERMINAL_ID"];
+  const keys = ["DORI_HOME", "DORI_AGENT_CMD", "DORI_TELEMETRY", "HERDR_WORKSPACE_ID", "DORI_HERDR_SPACE", "HC_TERMINAL_ID"];
   const previous = keys.map((key) => process.env[key]);
   const home = mkdtempSync(join(tmpdir(), "dori-core-test-"));
   onTestFinished(() => {
@@ -128,7 +128,7 @@ test("core up and start launch distinct grouped terminals with the configured ag
     });
     rmSync(home, { recursive: true, force: true });
   });
-  Object.assign(process.env, { DORI_HERDR: "core", DORI_HOME: home, DORI_AGENT_CMD: "/custom/omo-claude", DORI_TELEMETRY: "0" });
+  Object.assign(process.env, { DORI_HOME: home, DORI_AGENT_CMD: "/custom/omo-claude", DORI_TELEMETRY: "0" });
   for (const key of ["HERDR_WORKSPACE_ID", "DORI_HERDR_SPACE", "HC_TERMINAL_ID"]) delete process.env[key];
   const deps = defaultDeps();
   expect(deps.herdr).toBeInstanceOf(HerdrCore);
@@ -143,7 +143,6 @@ test("core up and start launch distinct grouped terminals with the configured ag
   const terminals = [...fake.terminals.values()];
   for (const t of terminals) {
     expect(t.cwd).toBe(home);
-    expect(t.env).toContain("DORI_HERDR=core");
     expect(t.env).toContain("DORI_TELEMETRY=0");
     expect(t.env).toContain(`DORI_HOME=${home}`);
   }
@@ -163,8 +162,11 @@ test("core up and start launch distinct grouped terminals with the configured ag
     "lead", "duty", "duty-loop", "hourly-loop", "core-lane",
   ]);
   await expect(core.run("t5", "another command")).rejects.toThrow("not a fresh launch shell");
-  delete process.env["DORI_HERDR"];
-  expect(defaultDeps().herdr).toBeInstanceOf(Herdr);
+});
+
+test("defaultDeps always drives HerdrCore, with no backend switch in the environment", () => {
+  spaceEnv({});
+  expect(defaultDeps().herdr).toBeInstanceOf(HerdrCore);
 });
 
 /** Dori itself may run inside an hc terminal; keep its space settings out of these tests. */

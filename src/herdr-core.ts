@@ -1,9 +1,9 @@
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { homedir } from "node:os";
 import {
-  DeliveryUncertain, HerdrError, interactiveShellInFront, omoScreenIdle, shq, spawnExec,
-  type AgentStatus, type Exec, type PaneRef,
-} from "./herdr.ts";
+  CommandError, DeliveryUncertain, interactiveShellInFront, omoScreenIdle, shq, spawnExec,
+  type AgentStatus, type Exec, type PaneRef, type TerminalBackend,
+} from "./terminal.ts";
 
 type Terminal = {
   readonly address: string;
@@ -35,7 +35,7 @@ function terminal(text: string): Terminal {
 }
 
 /** Core has terminals rather than panes. `where` supplies the space / tab grouping. */
-export class HerdrCore {
+export class HerdrCore implements TerminalBackend {
   // Only freshly created shells may receive a launch command through run().
   private readonly launchShells = new Set<string>();
   private readonly spaces = new Map<string, { readonly id: string; readonly label: string }>();
@@ -45,6 +45,7 @@ export class HerdrCore {
     private readonly binary: string = join(homedir(), ".local", "bin", "hc"),
     private readonly app: string = process.env["DORI_HERDR_APP"] || join(homedir(), ".local", "bin", "herdr-app"),
     private readonly pause: (ms: number) => Promise<void> = (ms) => Bun.sleep(ms),
+    private readonly env: Readonly<Record<string, string | undefined>> = process.env,
   ) {}
 
   /** The app ignores the where label for tab names; name the tab holding the terminal. Never fails a launch. */
@@ -76,7 +77,7 @@ export class HerdrCore {
 
   private async call(argv: readonly string[]): Promise<string> {
     const result = await this.exec(this.binary, argv);
-    if (result.code !== 0) throw new HerdrError(argv, result);
+    if (result.code !== 0) throw new CommandError(basename(this.binary), argv, result);
     return result.stdout;
   }
 
@@ -84,7 +85,7 @@ export class HerdrCore {
     try {
       return terminal(await this.call(["get", paneId, "--json"]));
     } catch (error) {
-      if (error instanceof HerdrError) {
+      if (error instanceof CommandError) {
         // Match only the structured error, never argv (which may contain arbitrary text).
         const raw = error.result.stderr || error.result.stdout;
         try {
@@ -130,7 +131,7 @@ export class HerdrCore {
   }
 
   private async preferredSpace(): Promise<{ readonly id: string; readonly label: string } | undefined> {
-    const id = process.env["DORI_HERDR_SPACE"];
+    const id = this.env["DORI_HERDR_SPACE"];
     if (id) {
       const list = object(JSON.parse(await this.call(["ls", "--json"])))["terminals"];
       if (!Array.isArray(list)) throw new Error("hc returned no terminal list");
@@ -141,7 +142,7 @@ export class HerdrCore {
       }
       throw new Error(`no hc terminal is in DORI_HERDR_SPACE ${id}`);
     }
-    const self = process.env["HC_TERMINAL_ID"];
+    const self = this.env["HC_TERMINAL_ID"];
     if (!self) return undefined;
     const value = await this.get(self);
     if (!value?.space) return undefined;
@@ -152,7 +153,7 @@ export class HerdrCore {
     const space = await this.space(workspaceId);
     const name = `dori-${crypto.randomUUID().slice(0, 12)}`;
     // hc's server does not inherit the caller's environment. Pass the harness configuration explicitly.
-    const inherited = Object.fromEntries(Object.entries(process.env).filter(([key, value]) =>
+    const inherited = Object.fromEntries(Object.entries(this.env).filter(([key, value]) =>
       value !== undefined && (key.startsWith("DORI_") || key === "PATH")));
     const vars = { ...inherited, ...env, HERDR_WORKSPACE_ID: space.id || workspaceId };
     const placement = space.id ? ["--label", `herdr.space=${space.id}`] : [];
@@ -187,7 +188,14 @@ export class HerdrCore {
     if (!value) return "gone";
     if (value.state !== "live") return "done";
     if (interactiveShellInFront({ foreground_processes: value.foreground ? [value.foreground] : [] })) return "shell";
-    const screen = await this.read(paneId, 0);
+    let screen: string;
+    try {
+      screen = await this.read(paneId, 0);
+    } catch (error) {
+      // An unreadable screen is doubt: the caller keeps the message queued.
+      if (!(error instanceof Error)) throw error;
+      return "unknown";
+    }
     // Prefer the active input region to old output above it.
     if (omoScreenIdle(screen)) return "idle";
     const bottom = screen.split("\n").slice(-30).join("\n");

@@ -4,14 +4,14 @@ import { join, resolve } from "node:path";
 import {
   defaultDeps, done, dutyTick, mergeGate, ready, Refusal, report, review, send, sendToShell, startLane, ROLES, type Deps, type SendResult,
 } from "./harness.ts";
-import { shq } from "./herdr.ts";
+import { shq } from "./terminal.ts";
 import { backlogAdd, backlogDecide, backlogDrop, backlogImport, loopTick, msUntilNext, summary, HOUR, IMPORT_LIMIT } from "./loop.ts";
 import type { Role } from "./store.ts";
 
-const USAGE = `dori - a proactive multi-session harness on herdr + omo
+const USAGE = `dori - a proactive multi-session harness on Herdr (hc) + omo
 
   dori up [--cwd DIR]                         open lead, duty, duty loop and hourly loop panes
-  dori role <lead|duty> [PANE]                register a pane as lead or duty (default: this pane)
+  dori role <lead|duty> [PANE]                register a terminal as lead or duty (default: this one)
   dori start <key> --brief FILE [--cwd DIR]   open a lane: new tab, omo session, brief + lane rules
   dori report <key> --text T [--status working|waiting]
   dori ready <key> --text T --evidence LINK [--evidence LINK ...]
@@ -124,7 +124,7 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
     case "role": {
       const role = need(x, "role") as Role;
       if (!ROLES.includes(role)) throw new Refusal(`role must be one of ${ROLES.join(", ")}`);
-      const pane = need(a.pos[2] ?? process.env["HERDR_PANE_ID"], "pane id (not inside herdr?)");
+      const pane = need(a.pos[2] ?? process.env["HC_TERMINAL_ID"], "terminal address (not inside an hc terminal?)");
       d.store.setRole(role, pane);
       console.log(`ROLE ${role}=${pane}`);
       return 0;
