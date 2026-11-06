@@ -74,6 +74,8 @@ export interface TerminalBackend {
   typeIntoShell(paneId: string, text: string): Promise<boolean>;
   read(paneId: string, lines?: number): Promise<string>;
   close(paneId: string): Promise<void>;
+  /** Removes a finished lane's terminal and closes its app tab when nothing else lives there; returns what it did. */
+  retire(paneId: string, laneKey: string): Promise<string>;
 }
 
 const INPUT_RULE = /^─{10,}$/;

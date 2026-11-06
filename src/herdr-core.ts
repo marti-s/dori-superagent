@@ -7,6 +7,8 @@ import {
 
 type Terminal = {
   readonly address: string;
+  readonly name: string;
+  readonly argv: readonly string[];
   readonly state: string;
   readonly foreground: { readonly name: string; readonly argv: readonly string[] } | null;
   readonly where: string;
@@ -27,7 +29,8 @@ function terminal(text: string): Terminal {
   }
   const labels = value["labels"] == null ? {} : object(value["labels"]);
   return {
-    address: value["address"], state: value["state"],
+    address: value["address"], name: typeof value["name"] === "string" ? value["name"] : "",
+    argv: Array.isArray(value["argv"]) ? value["argv"].map(String) : [], state: value["state"],
     foreground: front ? { name: String(front["name"]), argv: Array.isArray(front["argv"]) ? front["argv"].map(String) : [] } : null,
     where: typeof labels["where"] === "string" ? labels["where"] : "",
     space: typeof labels["herdr.space"] === "string" ? labels["herdr.space"] : "",
@@ -54,18 +57,9 @@ export class HerdrCore implements TerminalBackend {
       // The window learns of a new terminal shortly after hc starts it.
       for (let attempt = 0; attempt < 10; attempt++) {
         if (attempt > 0) await this.pause(200);
-        const listed = await this.exec(this.app, ["ls"]);
-        if (listed.code !== 0) throw new Error((listed.stderr || listed.stdout).trim() || `exit ${listed.code}`);
-        const spaces = object(JSON.parse(listed.stdout))["spaces"];
-        const tabs = (Array.isArray(spaces) ? spaces : []).flatMap((space) => {
-          const value = object(space)["tabs"];
-          return Array.isArray(value) ? value.map(object) : [];
-        });
-        const tab = tabs.find((t) => Array.isArray(t["terminals"]) &&
-          t["terminals"].some((term: unknown) => object(term)["terminal"] === paneId));
+        const tab = await this.tabOf(paneId);
         if (!tab) continue;
-        if (typeof tab["id"] !== "string") throw new Error("herdr-app listed a tab without an id");
-        const renamed = await this.exec(this.app, ["do", "tab.rename", "--id", tab["id"], "--name", name]);
+        const renamed = await this.exec(this.app, ["do", "tab.rename", "--id", tab.id, "--name", name]);
         if (renamed.code !== 0) throw new Error((renamed.stderr || renamed.stdout).trim() || `exit ${renamed.code}`);
         return;
       }
@@ -73,6 +67,68 @@ export class HerdrCore implements TerminalBackend {
     } catch (error) {
       process.stderr.write(`dori: could not name the app tab of ${paneId} "${name}": ${error instanceof Error ? error.message : String(error)}\n`);
     }
+  }
+
+  /** The app tab holding the terminal, with every terminal in it; undefined when the window lists none. */
+  private async tabOf(paneId: string): Promise<{ readonly id: string; readonly terminals: readonly string[] } | undefined> {
+    const listed = await this.exec(this.app, ["ls"]);
+    if (listed.code !== 0) throw new Error((listed.stderr || listed.stdout).trim() || `exit ${listed.code}`);
+    const spaces = object(JSON.parse(listed.stdout))["spaces"];
+    for (const space of Array.isArray(spaces) ? spaces : []) {
+      const tabs = object(space)["tabs"];
+      for (const tab of (Array.isArray(tabs) ? tabs : []).map(object)) {
+        const terminals = (Array.isArray(tab["terminals"]) ? tab["terminals"] : []).map((t: unknown) => String(object(t)["terminal"]));
+        if (!terminals.includes(paneId)) continue;
+        if (typeof tab["id"] !== "string") throw new Error("herdr-app listed a tab without an id");
+        return { id: tab["id"], terminals };
+      }
+    }
+    return undefined;
+  }
+
+  private async tabListed(tabId: string): Promise<boolean> {
+    const listed = await this.exec(this.app, ["ls"]);
+    if (listed.code !== 0) return true;
+    const spaces = object(JSON.parse(listed.stdout))["spaces"];
+    return (Array.isArray(spaces) ? spaces : []).some((space) => {
+      const tabs = object(space)["tabs"];
+      return (Array.isArray(tabs) ? tabs : []).some((tab) => object(tab)["id"] === tabId);
+    });
+  }
+
+  /**
+   * Removes a finished lane's terminal (hc kill, then hc rm) and closes its app tab. hc may hand a removed address
+   * to a new terminal, so only the terminal dori launched for this lane is touched: its hc name is dori-... and its
+   * launch argv carries DORI_LANE=<key>. A tab that still holds another live terminal is kept.
+   */
+  async retire(paneId: string, laneKey: string): Promise<string> {
+    const own = await this.get(paneId);
+    if (own && (!own.name.startsWith("dori-") || !own.argv.includes(`DORI_LANE=${laneKey}`))) {
+      return `kept: terminal ${paneId} is not the one dori started for lane ${laneKey}`;
+    }
+    let tab: { readonly id: string; readonly terminals: readonly string[] } | undefined;
+    let tabProblem = "";
+    try {
+      tab = await this.tabOf(paneId);
+    } catch (error) {
+      tabProblem = error instanceof Error ? error.message : String(error);
+    }
+    const others = [];
+    for (const other of tab?.terminals.filter((t) => t !== paneId) ?? []) {
+      if (await this.status(other) !== "gone") others.push(other);
+    }
+    if (own) {
+      if (own.state === "live") await this.call(["kill", paneId]);
+      await this.call(["rm", paneId]);
+    }
+    const removed = own ? `terminal ${paneId} removed` : `terminal ${paneId} already gone`;
+    if (tabProblem) return `${removed}; tab not closed: ${tabProblem}`;
+    if (!tab) return `${removed}; no app tab held it`;
+    if (others.length > 0) return `${removed}; tab ${tab.id} kept: it holds live ${others.join(", ")}`;
+    const closed = await this.exec(this.app, ["do", "tab.close", "--id", tab.id, "--confirmed", "true"]);
+    // The window drops a tab whose last terminal hc removed, so a refused close of a tab it no longer lists is done.
+    if (closed.code !== 0 && await this.tabListed(tab.id)) return `${removed}; tab ${tab.id} not closed: ${(closed.stderr || closed.stdout).trim()}`;
+    return `${removed}; tab ${tab.id} closed`;
   }
 
   private async call(argv: readonly string[]): Promise<string> {

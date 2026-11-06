@@ -21,6 +21,8 @@ export type Deps = {
   readonly agentCmd: string;
   /** How long one reviewer run may take before it is killed and the review fails. */
   readonly reviewTimeoutMs: number;
+  /** How long after a lane is done or lost the duty loop retires its terminal and tab; 0 never retires them. */
+  readonly tabCloseDelayMs: number;
   readonly doriCmd: string;
   readonly host: () => HostLoad;
   readonly usage: Usage;
@@ -35,6 +37,7 @@ export const defaultDeps = (): Deps => {
     now: Date.now,
     agentCmd: process.env["DORI_AGENT_CMD"] ?? "omo",
     reviewTimeoutMs: reviewTimeoutMinutes(process.env["DORI_REVIEW_TIMEOUT_MIN"]) * 60_000,
+    tabCloseDelayMs: tabCloseMinutes(process.env["DORI_TAB_CLOSE_MIN"]) * 60_000,
     doriCmd: process.env["DORI_CMD"] ?? `DORI_HOME=${shq(store.root)} bun ${shq(CLI)}`,
     host: () => ({ load1: loadavg()[0] ?? 0, cores: cpus().length, memFreePct: memFreePct() }),
     usage: new Telemetry(store.root),
@@ -44,6 +47,15 @@ export const defaultDeps = (): Deps => {
 export class Refusal extends Error {}
 
 const REVIEW_TIMEOUT_MIN = 25;
+const TAB_CLOSE_MIN = 15;
+
+/** DORI_TAB_CLOSE_MIN as minutes, 0 to never close; unset means 15, a negative or non-number is refused. */
+export function tabCloseMinutes(raw: string | undefined): number {
+  if (raw === undefined || raw === "") return TAB_CLOSE_MIN;
+  const minutes = Number(raw);
+  if (!Number.isFinite(minutes) || minutes < 0) throw new Error(`DORI_TAB_CLOSE_MIN must be 0 or a positive number of minutes, not ${JSON.stringify(raw)}`);
+  return minutes;
+}
 
 /** DORI_REVIEW_TIMEOUT_MIN as a positive number of minutes; unset means 25, anything else is refused. */
 export function reviewTimeoutMinutes(raw: string | undefined): number {
@@ -321,16 +333,45 @@ export async function done(d: Deps, key: string, abandon?: { note: string }): Pr
   if (!abandon && (st === "working" || st === "blocked")) throw new Refusal(`lane ${key} pane is ${st}; let it finish first`);
   if (st !== "gone") await d.herdr.close(lane.paneId);
   lane.status = "done";
-  lane.log.push({ at: d.now(), kind: "done", text: abandon ? `abandoned without READY: ${abandon.note}` : "closed by lead" });
+  lane.closedAt = d.now();
+  lane.log.push({ at: lane.closedAt, kind: "done", text: abandon ? `abandoned without READY: ${abandon.note}` : "closed by lead" });
   d.store.saveLane(lane);
 }
 
 /** A lane whose terminal finished or vanished without READY: recorded as lost and reported to the lead as [LOST]. */
 async function markLost(d: Deps, lane: Lane): Promise<void> {
   lane.status = "lost";
-  lane.log.push({ at: d.now(), kind: "lost", text: "terminal finished or disappeared without READY" });
+  lane.closedAt = d.now();
+  lane.log.push({ at: lane.closedAt, kind: "lost", text: "terminal finished or disappeared without READY" });
   d.store.saveLane(lane);
   await tellLead(d, `[LOST ${lane.key}] terminal ${lane.paneId} finished or closed without a final answer`, "duty");
+}
+
+/**
+ * Retires the terminal and app tab of every lane done or lost at least tabCloseDelayMs ago, once. A lane restarted
+ * since is working again and has no closedAt. The lead's, duty's and the loops' terminals are never touched, and the
+ * backend keeps any terminal it cannot prove is this lane's and any tab another live terminal still uses.
+ */
+async function retireClosedLanes(d: Deps, events: DutyEvent[]): Promise<void> {
+  if (d.tabCloseDelayMs <= 0) return;
+  const kept = new Set([...Object.values(d.store.roles()), ...d.store.loops()]);
+  for (const lane of d.store.lanes()) {
+    if ((lane.status !== "done" && lane.status !== "lost") || lane.closedAt === undefined || lane.retiredAt !== undefined) continue;
+    const now = d.now();
+    if (now - lane.closedAt < d.tabCloseDelayMs) continue;
+    try {
+      const text = kept.has(lane.paneId)
+        ? `kept: terminal ${lane.paneId} is the lead's, duty's or a loop's`
+        : await d.herdr.retire(lane.paneId, lane.key);
+      lane.retiredAt = now;
+      lane.log.push({ at: now, kind: "retired", text });
+      d.store.saveLane(lane);
+      events.push({ lane: lane.key, action: "retired", detail: text });
+    } catch (e) {
+      // Tried again on the next pass; one lane's failure never stops the others.
+      events.push({ lane: lane.key, action: "retire-failed", detail: failureDetail(e) });
+    }
+  }
 }
 
 // ---------- duty loop ----------
@@ -402,6 +443,7 @@ export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
       events.push({ lane: lane.key, action: "lane-failed", detail: failureDetail(e) });
     }
   }
+  await retireClosedLanes(d, events);
   const count = (pred: (a: string) => boolean) => events.filter((e) => pred(e.action)).length;
   d.usage.touch();
   d.usage.duty({

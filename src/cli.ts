@@ -100,6 +100,7 @@ async function up(d: Deps, cwd: string): Promise<void> {
   await d.herdr.run(loop.paneId, `${d.doriCmd} duty --interval 60`);
   const hourly = await d.herdr.split(loop.paneId, cwd, { ...env, HERDR_WORKSPACE_ID: lead.workspaceId });
   await d.herdr.run(hourly.paneId, `${d.doriCmd} loop`);
+  d.store.setLoops([loop.paneId, hourly.paneId]);
   console.log(`UP lead=${lead.paneId} duty=${duty.paneId} loop=${loop.paneId} hourly=${hourly.paneId} home=${d.store.root}`);
 }
 

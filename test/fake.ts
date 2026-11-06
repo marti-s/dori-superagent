@@ -17,8 +17,12 @@ type Process = { name: string; argv: string[] };
 type Pane = {
   status: AgentStatus; received: string[]; ran: string[];
   screen?: string | undefined; readFails?: boolean; foreground?: string | Process | null | undefined; tab?: string;
-  /** The terminal's program has exited: hc still lists it, as `finished`. */
+  /** The terminal's program has exited: hc still lists it, as `finished`, until `hc rm`. */
   finished?: boolean;
+  /** hc's name and launch argv; a terminal dori runs gets `dori-...` and its env argv. */
+  name?: string; argv?: string[];
+  /** The app tab holding the terminal; defaults to a tab of its own. */
+  appTab?: string;
 };
 
 const SCREENS: Partial<Record<AgentStatus, string>> = {
@@ -57,6 +61,8 @@ export class World {
     duty: (c) => { this.dutyCounts.push(c); },
     flush: async () => {},
   };
+  /** App tabs closed with `tab.close`. */
+  readonly closedTabs = new Set<string>();
   reviewer: (argv: readonly string[], opts?: ExecOptions) => { code: number; stdout: string; timedOut?: boolean } = () => ({ code: 0, stdout: "VERDICT: CLEAR" });
 
   addPane(id: string, status: AgentStatus = "idle"): Pane {
@@ -72,8 +78,22 @@ export class World {
 
   private app(argv: readonly string[]): ExecResult {
     if (argv[0] === "ls") {
-      const tabs = [...this.panes].map(([terminal, p]) => ({ id: `tab-${terminal}`, name: p.tab ?? "", terminals: [{ terminal }] }));
-      return ok({ spaces: [{ id: "sp", name: "dori", tabs }] });
+      const byTab = new Map<string, { id: string; name: string; terminals: { terminal: string }[] }>();
+      for (const [terminal, p] of this.panes) {
+        const id = p.appTab ?? `tab-${terminal}`;
+        if (this.closedTabs.has(id)) continue;
+        const tab = byTab.get(id) ?? { id, name: p.tab ?? "", terminals: [] };
+        tab.terminals.push({ terminal });
+        byTab.set(id, tab);
+      }
+      return ok({ spaces: [{ id: "sp", name: "dori", tabs: [...byTab.values()] }] });
+    }
+    if (argv[0] === "do" && argv[1] === "tab.close") {
+      // Like the real window, a tab whose last terminal hc removed is already gone.
+      const id = String(argv[3]);
+      const listed = [...this.panes].some(([terminal, p]) => (p.appTab ?? `tab-${terminal}`) === id);
+      this.closedTabs.add(id);
+      return listed ? ok({}) : fail(`no tab "${id}"`);
     }
     const pane = argv[0] === "do" && argv[1] === "tab.rename" ? this.panes.get(String(argv[3]).replace(/^tab-/, "")) : undefined;
     if (!pane) return fail(`unhandled herdr-app ${argv.join(" ")}`);
@@ -90,7 +110,9 @@ export class World {
     if (verb === "ls") return ok({ terminals: [] });
     if (verb === "run") {
       const address = `t${++this.next}`;
-      this.addPane(address, "shell");
+      const pane = this.addPane(address, "shell");
+      pane.name = argv[argv.indexOf("--name") + 1];
+      pane.argv = argv.slice(argv.indexOf("--") + 1);
       return ok({ address, state: "live" });
     }
     const pane = id ? this.panes.get(id) : undefined;
@@ -100,7 +122,10 @@ export class World {
         const n = (this.gets.get(id!) ?? 0) + 1;
         this.gets.set(id!, n);
         if (this.getHook.get(id!)?.(n) === "fail") return fail("connection lost");
-        return ok({ address: id, state: pane.finished ? "finished" : "live", foreground: pane.finished ? null : this.foreground(pane), labels: {} });
+        return ok({
+          address: id, name: pane.name ?? null, argv: pane.argv ?? [], state: pane.finished ? "finished" : "live",
+          foreground: pane.finished ? null : this.foreground(pane), labels: {},
+        });
       }
       case "read":
         return pane.readFails ? fail("read failed") : ok({ text: pane.screen ?? SCREENS[pane.status] ?? "" });
@@ -120,6 +145,10 @@ export class World {
         if (this.keyFails > 0) { this.keyFails--; return fail("key press failed"); }
         return ok({});
       case "kill":
+        pane.finished = true;
+        return ok({});
+      case "rm":
+        if (!pane.finished) return { code: 11, stdout: "", stderr: JSON.stringify({ error: { kind: "live", message: "kill it first" } }) };
         this.panes.delete(id!);
         return ok({});
     }
@@ -135,6 +164,7 @@ export class World {
       now: () => this.clock,
       agentCmd: "omo",
       reviewTimeoutMs: 25 * 60_000,
+      tabCloseDelayMs: 15 * 60_000,
       doriCmd: "dori",
       host: () => this.host,
       usage: this.recorder,

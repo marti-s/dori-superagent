@@ -15,7 +15,11 @@ export type Lane = {
   lastActivityAt: number;
   nudges: number;
   final?: { text: string; evidence: string[]; at: number };
-  log: { at: number; kind: "start" | "report" | "ready" | "nudge" | "done" | "lost"; text: string }[];
+  /** When the lane became done or lost; its terminal and tab are retired a configured delay later. */
+  closedAt?: number;
+  /** When the duty loop retired the lane's terminal and tab (or decided to leave them). */
+  retiredAt?: number;
+  log: { at: number; kind: "start" | "report" | "ready" | "nudge" | "done" | "lost" | "retired"; text: string }[];
 };
 
 export type Role = "lead" | "duty";
@@ -126,6 +130,15 @@ export class Store {
 
   laneByPane(paneId: string): Lane | undefined {
     return this.lanes().find((l) => l.paneId === paneId && l.status !== "done");
+  }
+
+  /** The duty loop's and the hourly loop's terminals, as `dori up` opened them. */
+  loops(): string[] {
+    return this.readJson<string[]>(join(this.root, "loops.json")) ?? [];
+  }
+
+  setLoops(paneIds: readonly string[]): void {
+    this.writeJson(join(this.root, "loops.json"), paneIds);
   }
 
   roles(): Partial<Record<Role, string>> {

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { main } from "../src/cli.ts";
-import { done, dutyTick, mergeGate, ready, Refusal, report, review, reviewTimeoutMinutes, send, startLane } from "../src/harness.ts";
+import { done, dutyTick, mergeGate, ready, Refusal, report, review, reviewTimeoutMinutes, send, startLane, tabCloseMinutes } from "../src/harness.ts";
 import { World } from "./fake.ts";
 
 function setup() {
@@ -48,7 +48,7 @@ describe("lanes", () => {
     expect(w.usage.map((e) => e.name)).toEqual(["dori.lane_started", "dori.lane_ready"]);
     expect(JSON.stringify(w.usage)).not.toContain("fix-login");
     await done(d, "fix-login");
-    expect(w.panes.has(lane.paneId)).toBe(false);
+    expect(w.panes.get(lane.paneId)!.finished).toBe(true);
     expect(d.store.lane("fix-login")!.status).toBe("done");
   });
 });
@@ -241,7 +241,7 @@ describe("duty loop", () => {
     await expect(done(d, "stuck")).rejects.toThrow("not ready: no final answer recorded (close it anyway with --abandon --note WHY)");
     await expect(done(d, "stuck", { note: " " })).rejects.toThrow("--abandon needs a --note");
     await done(d, "stuck", { note: "wedged since the morning" });
-    expect(w.panes.has(lane.paneId)).toBe(false);
+    expect(w.panes.get(lane.paneId)!.finished).toBe(true);
     const closed = d.store.lane("stuck")!;
     expect(closed.status).toBe("done");
     expect(closed.log.at(-1)!.text).toBe("abandoned without READY: wedged since the morning");
@@ -254,6 +254,100 @@ describe("duty loop", () => {
     w.panes.get(lane.paneId)!.finished = true;
     expect(await main(["done", "cli-stuck", "--abandon", "--note", "terminal exited"], d)).toBe(0);
     expect(d.store.lane("cli-stuck")!.log.at(-1)!.text).toBe("abandoned without READY: terminal exited");
+    expect(w.panes.has(lane.paneId)).toBe(true);
+  });
+});
+
+describe("retiring finished lanes", () => {
+  const MIN = 60_000;
+
+  test("a done lane's terminal and tab are closed 15 minutes later, not before, and the close is logged", async () => {
+    const { w, d, brief } = setup();
+    const lane = await startLane(d, "shipped", brief, { workspace: "w1" });
+    await ready(d, "shipped", "fixed", ["https://github.com/o/r/pull/1"]);
+    await done(d, "shipped");
+    w.clock += 14 * MIN;
+    expect((await dutyTick(d)).filter((e) => e.action === "retired")).toEqual([]);
+    expect(w.panes.has(lane.paneId)).toBe(true);
+    w.clock += MIN;
+    const events = await dutyTick(d);
+    expect(events).toContainEqual({ lane: "shipped", action: "retired", detail: `terminal ${lane.paneId} removed; tab tab-${lane.paneId} closed` });
+    expect(w.panes.has(lane.paneId)).toBe(false);
+    expect(w.closedTabs.has(`tab-${lane.paneId}`)).toBe(true);
+    expect(d.store.lane("shipped")!.log.at(-1)).toMatchObject({ kind: "retired", text: `terminal ${lane.paneId} removed; tab tab-${lane.paneId} closed` });
+    w.clock += 15 * MIN;
+    expect((await dutyTick(d)).filter((e) => e.action === "retired")).toEqual([]);
+  });
+
+  test("a lane LOST to a finished terminal is retired after the delay too", async () => {
+    const { w, d, brief } = setup();
+    const lane = await startLane(d, "crashed", brief, { workspace: "w1" });
+    w.panes.get(lane.paneId)!.finished = true;
+    expect(await dutyTick(d)).toContainEqual({ lane: "crashed", action: "lost" });
+    w.clock += 15 * MIN;
+    expect((await dutyTick(d)).some((e) => e.lane === "crashed" && e.action === "retired")).toBe(true);
+    expect(w.panes.has(lane.paneId)).toBe(false);
+  });
+
+  test("a lane restarted under its key before the delay is not retired, and its new terminal stays", async () => {
+    const { w, d, brief } = setup();
+    const first = await startLane(d, "again", brief, { workspace: "w1" });
+    await done(d, "again", { note: "restarting" });
+    w.clock += 5 * MIN;
+    const second = await startLane(d, "again", brief, { workspace: "w1" });
+    w.clock += 20 * MIN;
+    expect((await dutyTick(d)).filter((e) => e.action === "retired")).toEqual([]);
+    expect(w.panes.get(second.paneId)!.finished).toBeUndefined();
+    expect(w.closedTabs.has(`tab-${second.paneId}`)).toBe(false);
+    expect(w.panes.has(first.paneId)).toBe(true);
+  });
+
+  test("the lead's, duty's and the loops' terminals and tabs are never touched", async () => {
+    const { w, d, brief } = setup();
+    const lane = await startLane(d, "near-lead", brief, { workspace: "w1" });
+    // A lane whose recorded terminal is the lead's (a bad registration), and one sharing the duty tab with loops.
+    const duty = w.addPane("duty-t", "idle");
+    d.store.setRole("duty", "duty-t");
+    const loopPane = w.addPane("loop-t", "working");
+    d.store.setLoops(["loop-t"]);
+    duty.appTab = "tab-duty";
+    loopPane.appTab = "tab-duty";
+    w.panes.get(lane.paneId)!.appTab = "tab-duty";
+    await done(d, "near-lead", { note: "gone" });
+    const leadLane = await startLane(d, "is-lead", brief, { workspace: "w1" });
+    d.store.saveLane({ ...d.store.lane("is-lead")!, paneId: "t1", status: "done", closedAt: w.clock });
+    w.clock += 15 * MIN;
+    const events = await dutyTick(d);
+    expect(events).toContainEqual({ lane: "near-lead", action: "retired", detail: `terminal ${lane.paneId} removed; tab tab-duty kept: it holds live duty-t, loop-t` });
+    expect(events).toContainEqual({ lane: "is-lead", action: "retired", detail: "kept: terminal t1 is the lead's, duty's or a loop's" });
+    expect(w.closedTabs.size).toBe(0);
+    expect(w.panes.has("t1")).toBe(true);
+    expect(w.panes.get("t1")!.finished).toBeUndefined();
+    expect([duty.finished, loopPane.finished]).toEqual([undefined, undefined]);
+    expect(w.panes.has(leadLane.paneId)).toBe(true);
+  });
+
+  test("a terminal at the lane's address that dori did not start for that lane is kept", async () => {
+    const { w, d, brief } = setup();
+    const lane = await startLane(d, "reused", brief, { workspace: "w1" });
+    await done(d, "reused", { note: "done" });
+    w.panes.set(lane.paneId, { status: "idle", received: [], ran: [], name: "someone-else", argv: ["zsh"] });
+    w.clock += 15 * MIN;
+    expect(await dutyTick(d)).toContainEqual({ lane: "reused", action: "retired", detail: `kept: terminal ${lane.paneId} is not the one dori started for lane reused` });
+    expect(w.panes.has(lane.paneId)).toBe(true);
+    expect(w.closedTabs.size).toBe(0);
+  });
+
+  test("DORI_TAB_CLOSE_MIN of 0 never retires; unset is 15 minutes and a bad value is refused", async () => {
+    expect(tabCloseMinutes(undefined)).toBe(15);
+    expect(tabCloseMinutes("0")).toBe(0);
+    expect(() => tabCloseMinutes("-1")).toThrow("0 or a positive number");
+    const { w, d, brief } = setup();
+    const off = { ...d, tabCloseDelayMs: 0 };
+    const lane = await startLane(off, "kept", brief, { workspace: "w1" });
+    await done(off, "kept", { note: "x" });
+    w.clock += 24 * 60 * MIN;
+    expect((await dutyTick(off)).filter((e) => e.action === "retired")).toEqual([]);
     expect(w.panes.has(lane.paneId)).toBe(true);
   });
 });
