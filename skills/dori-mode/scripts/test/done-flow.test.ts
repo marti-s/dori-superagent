@@ -12,7 +12,8 @@ const lane: Lane = { key: "demo-lane", title: "demo", thread: "chat:team/123", p
 let state: ReturnType<typeof withState>;
 let world: World;
 const at = (ms: number) => depsFor(world, fakeClock(ms), state.dir, { hooks: { threadDone: ["notify", "{thread}", "{text}"] } });
-const closedVia = () => world.calls.filter((c) => c[0] === "herdr" && (c[1] === "pane" || c[1] === "tab") && c[2] === "close");
+const closedVia = () => world.calls.filter((c) => c[0] === "hc" && c[1] === "kill");
+const sends = () => world.calls.filter((c) => c[0] === "hc" && c[1] === "send");
 
 beforeEach(async () => {
   state = withState();
@@ -38,7 +39,8 @@ test("five quiet minutes after a claim the lane is closed, its thread marked don
   expect(closedVia()).toHaveLength(0);
   const lines = await watchTick(at(T0 + 5 * MIN + 1));
   expect(lines[0]).toStartWith("LANE_CLOSED demo-lane");
-  expect(closedVia()).toEqual([["herdr", "pane", "close", "w:p1"]]);
+  expect(closedVia()).toEqual([["hc", "kill", "w:p1"]]);
+  expect(world.calls).toContainEqual(["hc", "rm", "w:p1"]);
   expect(world.calls).toContainEqual(["notify", "chat:team/123", "Done: merged acme/app#1 abc123"]);
   expect(world.calls).toContainEqual(["git", "-C", "/repo", "worktree", "remove", WT]);
   const after = await at(T0).registry.read("demo-lane");
@@ -146,20 +148,20 @@ test("delivery is confirmed by the pane's agent status moving to working, with e
   world.panes = [{ pane_id: "w:p1", workspace_id: "w", agent: "pi", agent_status: "idle" }];
   world.onEnterStatus = "working";
   expect(await sendVerified(at(T0).run, at(T0).clock, "w:p1", "[LEAD] please report")).toBe("delivered");
-  expect(world.calls.filter((c) => c[2] === "send-keys")).toHaveLength(1);
+  expect(sends()).toHaveLength(1);
 });
 
 test("a screen that still shows the text never causes another Enter; no status change is unconfirmed", async () => {
   world.panes = [{ pane_id: "w:p1", workspace_id: "w", agent: "pi", agent_status: "idle" }];
-  world.stuckReads = 10;
+  world.screens = ["❯ ", ...Array(6).fill("❯ [LEAD] stuck text still here")];
   expect(await sendVerified(at(T0).run, at(T0).clock, "w:p1", "[LEAD] stuck text still here")).toBe("unconfirmed");
-  expect(world.calls.filter((c) => c[2] === "send-keys")).toHaveLength(1);
+  expect(sends()).toHaveLength(1);
 });
 
 test("a pane that was already working cannot show a change, so the send is unconfirmed, not delivered", async () => {
   world.panes = [{ pane_id: "w:p1", workspace_id: "w", agent: "pi", agent_status: "working" }];
   expect(await sendVerified(at(T0).run, at(T0).clock, "w:p1", "[LEAD] queued while busy")).toBe("unconfirmed");
-  expect(world.calls.filter((c) => c[2] === "send-keys")).toHaveLength(1);
+  expect(sends()).toHaveLength(1);
 });
 
 test("a pane with no running agent is a bare shell: nothing is typed, the send fails", async () => {
@@ -167,13 +169,13 @@ test("a pane with no running agent is a bare shell: nothing is typed, the send f
   expect(await sendVerified(at(T0).run, at(T0).clock, "w:p1", "[LEAD] please report")).toBe("failed");
   world.panes = [];
   expect(await sendVerified(at(T0).run, at(T0).clock, "w:p1", "[LEAD] please report")).toBe("failed");
-  expect(world.calls.filter((c) => c[2] === "send-text" || c[2] === "send-keys")).toHaveLength(0);
+  expect(sends()).toHaveLength(0);
 });
 
 test("an agent suspended with Ctrl+Z is still reported idle, but the shell is in front: nothing is typed", async () => {
   world.panes = [{ pane_id: "w:p1", workspace_id: "w", agent: "opencode", agent_status: "idle", foreground: "-zsh" }];
   expect(await sendVerified(at(T0).run, at(T0).clock, "w:p1", "[LEAD] please report")).toBe("failed");
-  expect(world.calls.filter((c) => c[2] === "send-text" || c[2] === "send-keys")).toHaveLength(0);
+  expect(sends()).toHaveLength(0);
 });
 
 test("an agent with a non-interactive sh -c child in front is delivered to; an empty foreground group is doubt", async () => {
@@ -181,17 +183,17 @@ test("an agent with a non-interactive sh -c child in front is delivered to; an e
   world.onEnterStatus = "working";
   expect(await sendVerified(at(T0).run, at(T0).clock, "w:p1", "[LEAD] one")).toBe("delivered");
   world.panes = [{ pane_id: "w:p1", workspace_id: "w", agent: "pi", agent_status: "idle", foreground: [] }];
-  const before = world.calls.filter((c) => c[2] === "send-text").length;
+  const before = sends().length;
   expect(await sendVerified(at(T0).run, at(T0).clock, "w:p1", "[LEAD] two")).toBe("failed");
-  expect(world.calls.filter((c) => c[2] === "send-text").length).toBe(before);
+  expect(sends().length).toBe(before);
 });
 
 test("a failed pane lookup is doubt: nothing is typed, the send fails", async () => {
   const deps = at(T0);
   const typed: (readonly string[])[] = [];
   const run = async (argv: readonly string[]) => {
-    if (argv[1] === "pane" && argv[2] === "list") return { code: 1, out: "", err: "herdr down" };
-    if (argv[2] === "send-text" || argv[2] === "send-keys") typed.push(argv);
+    if (argv[0] === "hc" && argv[1] === "get") return { code: 1, out: "", err: "hc down" };
+    if (argv[0] === "hc" && argv[1] === "send") typed.push(argv);
     return deps.run(argv);
   };
   expect(await sendVerified(run as typeof deps.run, deps.clock, "w:p1", "[LEAD] please report")).toBe("failed");

@@ -27,7 +27,7 @@ const paneSays = (...screens: string[]) => {
 const paneStatus = (status: string) => {
   for (const pane of world.panes) pane.agent_status = status;
 };
-const escapes = () => world.calls.filter((c) => c[2] === "send-keys" && c[4] === "escape");
+const escapes = () => world.calls.filter((c) => c[0] === "hc" && c[1] === "keys" && c[3] === "esc");
 
 test("a paused lane silent past the nudge and post times is neither nudged nor posted", async () => {
   await deps(T0).registry.write({ ...working, status: "paused" });
@@ -50,8 +50,8 @@ test("pause marks the lane paused only once the pane shows the goal paused, then
   expect(lane && statusOf(lane)).toBe("paused");
   expect(lane?.history?.at(-1)).toMatchObject({ status: "paused", note: "owner said wait" });
   expect(sent(world)).toEqual(["/goal pause"]);
-  const goalAt = world.calls.findIndex((c) => c[2] === "send-text");
-  const escAt = world.calls.findIndex((c) => c[2] === "send-keys" && c[4] === "escape");
+  const goalAt = world.calls.findIndex((c) => c[0] === "hc" && c[1] === "send");
+  const escAt = world.calls.findIndex((c) => c[0] === "hc" && c[1] === "keys" && c[3] === "esc");
   expect(escAt).toBeGreaterThan(goalAt);
   expect((await pauseLane(deps(T0 + 2 * MIN), lane as Lane, "again")).lines[0]).toBe("PAUSED waiting-lane already");
 });
@@ -71,7 +71,7 @@ test("an unconfirmed goal pause leaves the lane working, interrupts nothing, and
 
 test("a lane with no goal pauses: nothing can auto-continue, and an idle pane gets no Escape", async () => {
   await deps(T0).registry.write(working);
-  paneSays("❯ ", "cannot update goal: no goal exists\n❯ ");
+  paneSays("❯ ", "❯ ", ...Array(6).fill("❯ "), "cannot update goal: no goal exists\n❯ ");
 
   const r = await pauseLane(deps(T0 + MIN), working, "owner said wait");
 
@@ -82,11 +82,11 @@ test("a lane with no goal pauses: nothing can auto-continue, and an idle pane ge
 test("a not-done lane can be paused, and resume restores not-done and restarts the quiet clock", async () => {
   const notDone: Lane = { ...working, status: "not-done" };
   await deps(T0).registry.write(notDone);
-  paneSays("❯ ", "Goal paused\n❯ ");
+  paneSays("❯ ", "❯ ", ...Array(6).fill("❯ "), "Goal paused\n❯ ");
   const paused = (await pauseLane(deps(T0 + MIN), notDone, "wait")).lane;
   expect(statusOf(paused)).toBe("paused");
 
-  paneSays("Goal paused\n❯ ", "Goal active\n❯ ");
+  paneSays("Goal paused\n❯ ", "❯ ", ...Array(6).fill("❯ "), "Goal active\n❯ ");
   const r = await resumeLane(deps(T0 + 90 * MIN), paused, "owner said go");
 
   expect(r).toMatchObject({ code: 0, lines: ["RESUMED waiting-lane as not-done, goal resumed"] });
@@ -99,7 +99,7 @@ test("a not-done lane can be paused, and resume restores not-done and restarts t
 test("resume of a working lane restarts the quiet clock: no nudge until nudgeAfterMin after the resume", async () => {
   const paused: Lane = { ...working, status: "paused", history: [{ at: new Date(T0).toISOString(), status: "paused", note: "wait" }] };
   await deps(T0).registry.write(paused);
-  paneSays("❯ ", "Goal active\n❯ ");
+  paneSays("❯ ", "❯ ", ...Array(6).fill("❯ "), "Goal active\n❯ ");
   await resumeLane(deps(T0 + 90 * MIN), paused, "go");
   expect(statusOf((await stored()) as Lane)).toBe("working");
   world.screens = [];
@@ -110,7 +110,7 @@ test("resume of a working lane restarts the quiet clock: no nudge until nudgeAft
 test("a lane paused mid-turn (Escape) and then woken stays paused: resume is dori resume only, whatever the screen shows", async () => {
   paneStatus("working");
   await deps(T0).registry.write(working);
-  paneSays("❯ ", "Goal paused\n❯ ");
+  paneSays("❯ ", "❯ ", "Goal paused\n❯ ");
   await pauseLane(deps(T0 + MIN), working, "owner said wait");
   expect(escapes()).toHaveLength(1);
   // Woken afterwards (a background result), still running on two ticks, even with a goal line that reads active.
@@ -149,15 +149,15 @@ test("pause and resume refuse lanes in other states with exit 2, and a lane with
 
 test("every wake of a paused lane is reported, across a resume and a second pause", async () => {
   await deps(T0).registry.write(working);
-  paneSays("❯ ", "Goal paused\n❯ ");
+  paneSays("❯ ", "❯ ", ...Array(6).fill("❯ "), "Goal paused\n❯ ");
   let lane = (await pauseLane(deps(T0 + MIN), working, "wait")).lane;
   paneStatus("working");
   await freshnessTick(deps(T0 + 5 * MIN), "/home/test");
   expect((await freshnessTick(deps(T0 + 10 * MIN), "/home/test")).map((a) => a.kind)).toEqual(["working-while-paused"]);
   paneStatus("idle");
-  paneSays("❯ ", "Goal active\n❯ ");
+  paneSays("❯ ", "❯ ", ...Array(6).fill("❯ "), "Goal active\n❯ ");
   lane = (await resumeLane(deps(T0 + 11 * MIN), (await stored()) as Lane, "go")).lane;
-  paneSays("❯ ", "Goal paused\n❯ ");
+  paneSays("❯ ", "❯ ", ...Array(6).fill("❯ "), "Goal paused\n❯ ");
   await pauseLane(deps(T0 + 12 * MIN), lane, "wait again");
   world.screens = [];
   paneStatus("working");

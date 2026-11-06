@@ -122,6 +122,24 @@ test("a quiet lane with no [REPORT] line logs NO-REPORT once, not on every tick"
   expect(await freshnessTick(deps(T0 + 31 * MIN), "/home/test")).toEqual([]);
 });
 
+// The fake models a pane's status as a footer on every screen read; these launch tests need the screen and the status apart.
+// So the wrapper owns the launched pane's screen reads (--lines 40) and sets its status per `hc get`, one status per lookup, the last repeating.
+const LANE_PANE = "w:p9";
+const launchedPane = (w: World, inner: Runner, statuses: (string | undefined)[]): Runner => async (argv, opts) => {
+  if (argv[0] === "hc" && argv[1] === "get" && argv[2] === LANE_PANE) {
+    const s = statuses.length > 1 ? statuses.shift() : statuses[0];
+    const pane = w.panes.find((p) => p.pane_id === LANE_PANE);
+    if (pane) pane.agent_status = s;
+  }
+  if (argv[0] === "hc" && argv[1] === "read" && argv[2] === LANE_PANE) {
+    if (argv[4] === "40") return { code: 0, out: w.screens?.length ? (w.screens.shift() ?? "") : w.screen, err: "" };
+    const { screens, screen } = w;
+    w.screens = []; w.screen = "";
+    try { return await inner(argv, opts); } finally { w.screens = screens; w.screen = screen; }
+  }
+  return inner(argv, opts);
+};
+
 test("launch reports STARTUP_OK only on a ready agent status that shows a goal; a blank pane is unconfirmed, a known failure is an error", async () => {
   const brief = join(state.dir, "brief.md");
   // A status list is returned one per lookup, the last one repeating.
@@ -133,16 +151,9 @@ test("launch reports STARTUP_OK only on a ready agent status that shows a goal; 
     if (Array.isArray(screen)) world.screens = [...screen];
     else world.screen = screen;
     waits = 0;
+    world.launchAddress = LANE_PANE;
     const base = depsFor(world, { ...fakeClock(T0), sleep: async () => void waits++ }, state.dir, patch);
-    const inner = base.run;
-    const deps = { ...base, run: async (argv: readonly string[]) => {
-      if (argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create") return { code: 0, out: JSON.stringify({ result: { root_pane: { pane_id: "w:p9" }, tab_id: "w:t9" } }), err: "" };
-      if (argv[0] === "herdr" && argv[1] === "pane" && argv[2] === "list") {
-        const s = statuses.length > 1 ? statuses.shift() : statuses[0];
-        return { code: 0, out: JSON.stringify({ result: { panes: [{ pane_id: "w:p9", workspace_id: "w", ...(s ? { agent: "pi", agent_status: s } : {}) }] } }), err: "" };
-      }
-      return inner(argv);
-    } };
+    const deps = { ...base, run: launchedPane(world, base.run, statuses) };
     return (await launchLane(deps, { key, title: "t", brief, done: "closed acme/app#3" })).startup;
   };
   const goal = "❯ \n Pursuing goal (1m)";
@@ -170,31 +181,50 @@ test("STARTUP_NO_GOAL names the time the launch really waited, not the planned 8
   const brief = join(state.dir, "brief.md");
   writeFileSync(brief, "# brief\n");
   world.screen = "❯ ";
+  world.launchAddress = LANE_PANE;
   const clock = fakeClock(T0);
   const base = depsFor(world, { ...clock, sleep: async (ms: number) => void (clock.at += ms + 5_000) }, state.dir);
-  const inner = base.run;
-  const deps = { ...base, run: async (argv: readonly string[]) => {
-    if (argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create") return { code: 0, out: JSON.stringify({ result: { root_pane: { pane_id: "w:p9" }, tab_id: "w:t9" } }), err: "" };
-    if (argv[0] === "herdr" && argv[1] === "pane" && argv[2] === "list") return { code: 0, out: JSON.stringify({ result: { panes: [{ pane_id: "w:p9", workspace_id: "w", agent: "pi", agent_status: "idle" }] } }), err: "" };
-    return inner(argv);
-  } };
+  const deps = { ...base, run: launchedPane(world, base.run, ["idle"]) };
   // When the launch gives up on the goal; then the message gives the 20 s check plus six 10 s re-reads, each 5 s late.
   const { startup } = await launchLane(deps, { key: "late-lane", title: "t", brief, done: "closed acme/app#3" });
   expect(startup).toStartWith("STARTUP_NO_GOAL late-lane w:p9: the agent is running but shows no goal after 115 s;");
 });
 
-test("launch registers the lane before it starts the agent, so the lane's first dori report is accepted", async () => {
+test("launch registers the lane with the returned address before it waits for the agent, so the lane's first dori report is accepted", async () => {
   const brief = join(state.dir, "brief.md");
   writeFileSync(brief, "# brief\n");
+  world.launchAddress = LANE_PANE;
   const base = depsFor(world, fakeClock(T0), state.dir);
-  let atStart: Lane | null | undefined;
+  let atFirstRead: Lane | null | undefined;
   const deps = { ...base, run: async (argv: readonly string[]) => {
-    if (argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create") return { code: 0, out: JSON.stringify({ result: { root_pane: { pane_id: "w:p9" }, tab_id: "w:t9" } }), err: "" };
-    if (argv[0] === "herdr" && argv[1] === "pane" && argv[2] === "run") atStart = await base.registry.read("fast-lane");
+    if (argv[0] === "hc" && argv[1] === "read" && atFirstRead === undefined) atFirstRead = await base.registry.read("fast-lane");
     return base.run(argv);
   } };
   await launchLane(deps, { key: "fast-lane", title: "t", brief, done: "closed acme/app#3" });
-  expect(atStart?.pane).toBe("w:p9");
+  expect(atFirstRead).toMatchObject({ pane: LANE_PANE, tab: LANE_PANE });
+});
+
+test("launch passes the agent argv directly after -- and names the tab; a failing herdr-app rename still launches", async () => {
+  const brief = join(state.dir, "brief.md");
+  writeFileSync(brief, "# brief\n");
+  world.launchAddress = LANE_PANE;
+  world.appDown = true;
+  const deps = depsFor(world, fakeClock(T0), state.dir);
+  const { lane } = await launchLane(deps, { key: "rename-lane", title: "t", brief, done: "closed acme/app#3" });
+  expect(lane.pane).toBe(LANE_PANE);
+  expect((await deps.registry.read("rename-lane"))?.pane).toBe(LANE_PANE);
+  const run = world.calls.find((c) => c[0] === "hc" && c[1] === "run") ?? [];
+  expect(run.slice(run.indexOf("--") + 1, run.indexOf("--") + 2)).toEqual(["omo"]);
+  expect(world.calls.some((c) => c[0] === "herdr-app" && c[1] === "ls")).toBe(true);
+  expect(world.calls.some((c) => c[0] === "herdr-app" && c.includes("tab.rename"))).toBe(false);
+});
+
+test("launch renames the tab holding the new terminal", async () => {
+  const brief = join(state.dir, "brief.md");
+  writeFileSync(brief, "# brief\n");
+  world.launchAddress = LANE_PANE;
+  await launchLane(depsFor(world, fakeClock(T0), state.dir), { key: "named-lane", title: "t", brief, done: "closed acme/app#3" });
+  expect(world.calls).toContainEqual(["herdr-app", "do", "tab.rename", "--id", `tab-${LANE_PANE}`, "--name", "named-lane"]);
 });
 
 test("the harness launch record is not the lane's report: a silent launched lane is NO-REPORT, never posted", async () => {
@@ -202,11 +232,8 @@ test("the harness launch record is not the lane's report: a silent launched lane
   writeFileSync(brief, "# brief\n");
   world.screen = "Working (1m)\n❯ ";
   const clock = fakeClock(T0);
-  const base = depsFor(world, clock, state.dir, { hooks: { threadReply: ["notify", "{thread}", "{text}"] } });
-  const deps = { ...base, run: async (argv: readonly string[]) => {
-    if (argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create") return { code: 0, out: JSON.stringify({ result: { root_pane: { pane_id: "w:p9" }, tab_id: "w:t9" } }), err: "" };
-    return base.run(argv);
-  } };
+  world.launchAddress = LANE_PANE;
+  const deps = depsFor(world, clock, state.dir, { hooks: { threadReply: ["notify", "{thread}", "{text}"] } });
   await launchLane(deps, { key: "new-lane", title: "t", brief, done: "closed acme/app#3", thread: "chat:team/9" });
   clock.at = T0 + 21 * MIN;
   expect((await freshnessTick(deps, "/home/test")).map((a) => a.kind)).toEqual(["nudged", "no-report"]);
@@ -295,10 +322,10 @@ test("adopting a lane refuses a Done line the watcher could never check", async 
 });
 
 test("the session id is read from --session, then a child's environment, then the session file made at start", async () => {
-  const info = JSON.stringify({ result: { process_info: { shell_pid: 10 } } });
+  const info = JSON.stringify({ address: "t1w", state: "live", pid: 10, foreground: null, labels: {} });
   const fake = (extra: Record<string, string>) => async (argv: readonly string[]) => {
     const line = argv.join(" ");
-    if (line.startsWith("herdr pane process-info")) return { code: 0, out: info, err: "" };
+    if (line.startsWith("hc get")) return { code: 0, out: info, err: "" };
     const hit = Object.entries(extra).find(([k]) => line.startsWith(k));
     return { code: hit ? 0 : 1, out: hit?.[1] ?? "", err: "" };
   };

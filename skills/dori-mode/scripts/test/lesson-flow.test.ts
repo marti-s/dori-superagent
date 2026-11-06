@@ -77,6 +77,7 @@ test("preview is side-effect free and actual launch ships the same prepared brie
   const state = withState();
   try {
     const world = newWorld(), clock = fakeClock(T0);
+    world.launchAddress = "qa:p1";
     const deps = depsFor(world, clock, state.dir);
     const brief = join(state.dir, "brief.md"), original = "Perform the fixture work.";
     writeFileSync(brief, original);
@@ -89,23 +90,20 @@ test("preview is side-effect free and actual launch ships the same prepared brie
     expect(await deps.registry.list()).toEqual([]);
     expect(world.calls).toEqual([]);
     // When actually launching through the same preparation path.
-    const launched = await launchLane({ ...deps, run: async (argv, opts) =>
-      argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create"
-        ? { code: 0, out: JSON.stringify({ result: { root_pane: { pane_id: "qa:p1" }, tab_id: "qa:t1" } }), err: "" }
-        : deps.run(argv, opts),
-    }, input);
+    const launched = await launchLane(deps, input);
     // Then byte-for-byte shipped-copy equality protects preview/launch parity.
     expect(readFileSync(brief, "utf8")).toBe(preview.preamble);
     expect(launched.lane.pane).toBe("qa:p1");
-    expect(await deps.registry.read(lane.key)).toMatchObject({ key: lane.key, pane: "qa:p1", tab: "qa:t1" });
+    expect(await deps.registry.read(lane.key)).toMatchObject({ key: lane.key, pane: "qa:p1", tab: "qa:p1" });
   } finally { state.done(); }
 });
 
-test("a retry after a failed tab create ships the same brief, not a second lessons block and footer", async () => {
-  // Given a brief, a lesson, and a herdr whose first tab create fails.
+test("a retry after a failed hc run ships the same brief, not a second lessons block and footer", async () => {
+  // Given a brief, a lesson, and a hc whose first run fails.
   const state = withState();
   try {
     const world = newWorld();
+    world.launchAddress = "qa:p1";
     const deps = depsFor(world, fakeClock(T0), state.dir);
     const brief = join(state.dir, "brief.md");
     writeFileSync(brief, "Perform the fixture work.");
@@ -114,13 +112,11 @@ test("a retry after a failed tab create ships the same brief, not a second lesso
     const expected = (await prepareLaunch(deps, input)).preamble;
     let creates = 0;
     const run: typeof deps.run = async (argv, opts) =>
-      argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create"
-        ? ++creates === 1
-          ? { code: 1, out: "", err: "server busy" }
-          : { code: 0, out: JSON.stringify({ result: { root_pane: { pane_id: "qa:p1" }, tab_id: "qa:t1" } }), err: "" }
+      argv[0] === "hc" && argv[1] === "run" && ++creates === 1
+        ? { code: 1, out: "", err: "server busy" }
         : deps.run(argv, opts);
     // When the first launch fails and the lead runs it again.
-    await expect(launchLane({ ...deps, run }, input)).rejects.toThrow("herdr tab create failed");
+    await expect(launchLane({ ...deps, run }, input)).rejects.toThrow("hc run failed");
     await launchLane({ ...deps, run }, input);
     // Then the shipped brief is the one a first launch would have shipped.
     expect(readFileSync(brief, "utf8")).toBe(expected);
@@ -128,10 +124,12 @@ test("a retry after a failed tab create ships the same brief, not a second lesso
 });
 
 test("a brief that quotes the footer heading mid-file is shipped whole on first launch and on retry", async () => {
-  // Given a copied launched brief with new work below its old footer, a lesson, and a herdr whose first tab create fails.
+  // Given a copied launched brief with new work below its old footer, a lesson, and a hc whose first run fails.
   const state = withState();
   try {
-    const deps = depsFor(newWorld(), fakeClock(T0), state.dir);
+    const world = newWorld();
+    world.launchAddress = "qa:p1";
+    const deps = depsFor(world, fakeClock(T0), state.dir);
     const brief = join(state.dir, "brief.md");
     const original = "Perform the fixture work.\n\n## Lane footer (written by dori launch)\n- Key: old-lane. Work thread: none.\n\nThen do the new work below the old footer.";
     writeFileSync(brief, original);
@@ -143,13 +141,11 @@ test("a brief that quotes the footer heading mid-file is shipped whole on first 
     expect(first).toContain(original);
     let creates = 0;
     const run: typeof deps.run = async (argv, opts) =>
-      argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create"
-        ? ++creates === 1
-          ? { code: 1, out: "", err: "server busy" }
-          : { code: 0, out: JSON.stringify({ result: { root_pane: { pane_id: "qa:p1" }, tab_id: "qa:t1" } }), err: "" }
+      argv[0] === "hc" && argv[1] === "run" && ++creates === 1
+        ? { code: 1, out: "", err: "server busy" }
         : deps.run(argv, opts);
     // When that launch fails and the lead runs it again.
-    await expect(launchLane({ ...deps, run }, input)).rejects.toThrow("herdr tab create failed");
+    await expect(launchLane({ ...deps, run }, input)).rejects.toThrow("hc run failed");
     await launchLane({ ...deps, run }, input);
     // Then the retry ships the first launch's brief: the owner text whole, one lessons block and one dori footer.
     const shipped = readFileSync(brief, "utf8");

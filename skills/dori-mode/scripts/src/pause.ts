@@ -45,7 +45,7 @@ export const pauseLane = async (deps: FlowDeps, lane: Lane, note: string): Promi
   const paused = withStatus(lane, "paused", note, at, { pausedFrom: status, pausedSeenWorking: undefined, lastFreshnessNote: undefined });
   await deps.registry.write(paused);
   const running = (await statusLookup(deps.run, lane.pane)).status === "working";
-  if (running) await deps.run(["herdr", "pane", "send-keys", lane.pane, "escape"]);
+  if (running) await deps.run(["hc", "keys", lane.pane, "esc"]);
   return { lane: paused, lines: [`PAUSED ${lane.key} goal paused${running ? ", running turn interrupted" : ""}`], code: 0 };
 };
 

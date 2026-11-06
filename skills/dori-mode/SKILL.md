@@ -1,11 +1,11 @@
 ---
 name: dori-mode
-description: Turns a coding agent into a "Dori", an always-on messenger agent that takes requests from its owner over Telegram or Discord, runs the real work in herdr sessions it launches and tracks, and reports back in threads. Use when the user says "Dori mode", "<name> mode", "be my Dori", asks to set up an always-on messenger agent, or asks to launch, track, adopt or close agent sessions (lanes) with a session registry and a 5-minute done-claim rule.
+description: Turns a coding agent into a "Dori", an always-on messenger agent that takes requests from its owner over Telegram or Discord, runs the real work in hc terminals it launches and tracks, and reports back in threads. Use when the user says "Dori mode", "<name> mode", "be my Dori", asks to set up an always-on messenger agent, or asks to launch, track, adopt or close agent sessions (lanes) with a session registry and a 5-minute done-claim rule.
 ---
 
 # Dori mode
 
-A Dori is one agent session that stays up, listens to its owner on a messenger, and gets work done by handing it to other agent sessions and following them to the end. The owner talks to one bot. The Dori opens a herdr tab per job, keeps a registry of every session it runs, and closes a session only after the work is proven done.
+A Dori is one agent session that stays up, listens to its owner on a messenger, and gets work done by handing it to other agent sessions and following them to the end. The owner talks to one bot. The Dori opens a Herdr tab per job, keeps a registry of every session it runs, and closes a session only after the work is proven done.
 
 This file is the operating contract. Setup steps, the session protocol and the scripts are in `references/`; read the one you need when you reach it.
 
@@ -17,7 +17,7 @@ Before anything else, ask the owner what to call you. Plain "Dori" is fine, and 
 
 Run once, in order. Details and commands: `references/setup.md`.
 
-1. Run inside herdr. It is how you open, read and message sessions, and they survive restarts.
+1. Run inside Herdr. `hc` is how you open, read and message sessions, and they survive restarts.
 2. Install agent-messenger, ask the owner which platform (Telegram, Discord, Slack, ...), and wait for the answer. If it is Slack, also ask: user token (a real member with a paid seat the owner pays for, sees everything that member sees, can show online) or bot token (an app, no seat cost, only invited channels and its scopes). Give that trade-off in one short list and wait.
 3. Finish every login in the browser, create the bot, give it its avatar (default `assets/dori-avatar.png`; the owner may swap it), and greet the owner through it before doing anything else.
 4. Install the scripts in `scripts/` (one command, see `references/setup.md`) and write `~/.dori/config.json` from `references/config.example.json`.
@@ -63,10 +63,10 @@ Do it yourself with every tool you have. Fix bugs without asking. Before buildin
 
 ## Sessions (lanes)
 
-Real work runs in its own herdr tab, called a lane. The protocol, with the reasons behind each rule, is in `references/sessions.md`; the short version:
+Real work runs in its own Herdr tab, called a lane. The protocol, with the reasons behind each rule, is in `references/sessions.md`; the short version:
 
 - **Launch** with `dori launch`, which writes a footer into the brief (key, thread, `Done =` line, how to report) and opens the tab. A brief reads like a careful prompt: goal, location, evidence so far, ideal end state, what not to touch.
-- **Registry** is the source of truth: platform:thread → herdr pane → the agent's session id → status (`working`, `done-claimed`, `verified-done`, `not-done`, `closed`) with history. `dori sync` rebuilds it from live state and reports drift; it never deletes anything.
+- **Registry** is the source of truth: platform:thread → hc terminal → the agent's session id → status (`working`, `done-claimed`, `verified-done`, `not-done`, `closed`) with history. `dori sync` rebuilds it from live state and reports drift; it never deletes anything.
 - **Done** is a claim, not a fact. A lane claims with `dori claim-done <key> --evidence "..."`. You check the evidence against live state. If it holds, close; if not, `dori object-done <key> --reason "..."` within 5 minutes. An unanswered claim closes the lane automatically, unless its worktree has unpushed or uncommitted work or a `Done =` signal fails, which turns the claim into not-done with that reason. Full protocol for lanes: `references/done-protocol.md`; tell every lane this rule when you hand it work.
 - **Before messaging a session**, confirm its pane runs a live agent with an empty input line, send once, and verify the text left the input. Never send to a shell, a stopped agent or an approval prompt.
 - Watch for sessions that turn blocked or ask a question; answer them or bring them to the owner.

@@ -1,5 +1,5 @@
 import type { DoriConfig } from "./config.ts";
-import { ALIVE_STATUSES, listPanes, readScreen } from "./panes.ts";
+import { ALIVE_STATUSES, agentStatus, listPanes, readScreen } from "./panes.ts";
 import type { Runner } from "./run.ts";
 
 /** Unrecognised ticks in a row before one alert names the pane. */
@@ -10,7 +10,7 @@ export type DeadPaneState = { readonly unknown: Map<string, number>; readonly la
 export const newDeadPaneState = (): DeadPaneState => ({ unknown: new Map(), lastTail: new Map() });
 
 /**
- * A pane is alive when herdr reports a running agent status for it; that wins over any screen text. Otherwise it is
+ * A pane is alive when its derived agent status (see agentStatus) is a running one; that wins over any marker text. Otherwise it is
  * dead only when this tick's tail carries a configured dead marker AND equals the previous tick's tail, so the two
  * reads are a full loop interval apart and a screen mid-redraw never counts. A marker seen once is pending. Anything
  * else is unrecognised, counted per pane, with one alert after UNRECOGNISED_ALERT_AFTER ticks in a row.
@@ -22,7 +22,8 @@ export const deadPaneTick = async (run: Runner, config: DoriConfig, seen: Set<st
   const marked = (tail: string) => config.deadPanePatterns.some((p) => tail.includes(p.toLowerCase()));
   for (const pane of await listPanes(run)) {
     if (skip.has(pane.pane_id) || (watch.size > 0 && !watch.has(pane.workspace_id))) continue;
-    if (pane.agent_status && ALIVE_STATUSES.has(pane.agent_status)) {
+    const status = pane.agent_status ?? (await agentStatus(run, pane.pane_id));
+    if (status && ALIVE_STATUSES.has(status)) {
       state.unknown.delete(pane.pane_id);
       state.lastTail.delete(pane.pane_id);
       continue;

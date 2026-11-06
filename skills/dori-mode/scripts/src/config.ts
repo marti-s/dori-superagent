@@ -148,7 +148,8 @@ export const loadConfig = async (path = configPath(), home = homedir()): Promise
     stateDir: expandHome(process.env.DORI_STATE_DIR ?? merged.stateDir, home),
     defaultCwd: expandHome(merged.defaultCwd, home),
     sessionsDir: expandHome(merged.sessionsDir, home),
-    leadPane: process.env.DORI_LEAD_PANE ?? merged.leadPane,
+    // The lead is the terminal running dori unless the env or the file names another.
+    leadPane: process.env.DORI_LEAD_PANE ?? (merged.leadPane || (process.env.HC_TERMINAL_ID ?? "")),
   };
 };
 

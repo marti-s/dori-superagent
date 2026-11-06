@@ -53,7 +53,7 @@ test("persistent watches on closed or verified lanes become owner-scoped stop ca
   const lanes = [lane("closed", "closed"), lane("verified", "verified-done"), lane("claimed", "done-claimed")];
   const input = manifest([
     { command: "dori watch closed", monitorId: "mon_CLOSED" },
-    { command: "herdr pane read w1:verified", monitorId: "mon_VERIFIED" },
+    { command: "hc read w1:verified --lines 40", monitorId: "mon_VERIFIED" },
     { command: "dori watch claimed", monitorId: "mon_CLAIMED" },
     { command: "dori watch closed", monitorId: "mon_EPHEMERAL", persistent: false },
   ]);
@@ -154,7 +154,7 @@ test("boot reports vanished panes, journals and stale watches, and writes nothin
   expect(result.lines).toContain('STOP in the owner session only: kill_bash({"bash_id":"mon_REALFIXTURE"})');
   expect(result.lines.some((l) => l.startsWith("VANISHED closed"))).toBe(false);
   expect(snapshot(state.dir)).toEqual(before);
-  expect(world.calls.every((c) => c[0] === "herdr" && c[1] === "pane" && c[2] === "list")).toBe(true);
+  expect(world.calls.every((c) => c[0] === "hc" && c[1] === "ls")).toBe(true);
 });
 
 test("boot on a state dir with no lanes directory leaves it byte-identical", async () => {
@@ -334,7 +334,7 @@ test("a journal-done lane whose pane is gone is finished in both checks: not VAN
 });
 
 test("a failed pane list stays unknown instead of declaring every lane vanished", async () => {
-  // Given herdr failing to list panes.
+  // Given hc failing to list terminals.
   const world = newWorld();
   const deps = bootDeps(world);
   await deps.registry.write(lane("active"));
@@ -342,7 +342,7 @@ test("a failed pane list stays unknown instead of declaring every lane vanished"
   // When boot runs; then it is incomplete and no lane is called vanished.
   const result = await bootCheck(failing);
   expect(result.exitCode).toBe(1);
-  expect(result.lines).toContain("PANES unavailable (herdr pane list failed)");
+  expect(result.lines).toContain("PANES unavailable (hc ls failed)");
   expect(result.lines.some((line) => line.startsWith("VANISHED"))).toBe(false);
 });
 
@@ -525,7 +525,7 @@ test("dori boot reads the current session's terminal metadata from PI_SESSION_DI
   await new Registry(stateDir).write(lane("closed", "closed"));
   writeFileSync(join(current, "a.json"), JSON.stringify(manifest([{ command: "dori watch closed", monitorId: "mon_SESSIONDIR" }]).data));
   writeFileSync(join(fileDir, "b.json"), JSON.stringify(manifest([{ command: "dori watch closed", monitorId: "mon_SESSIONFILE" }]).data));
-  // When the real CLI runs boot with no Slack token and no herdr on PATH.
+  // When the real CLI runs boot with no Slack token and no hc on PATH.
   const proc = Bun.spawn([process.execPath, join(import.meta.dir, "..", "src", "cli.ts"), "boot"], {
     env: {
       HOME: home, PATH: dirname(process.execPath), TMPDIR: state.dir, DORI_TELEMETRY: "0",
@@ -539,7 +539,7 @@ test("dori boot reads the current session's terminal metadata from PI_SESSION_DI
   expect(out).toContain(`CLEANUP closed match=closed:command:key ownerSession=owner metadata=${join(current, "a.json")}`);
   expect(out).toContain(`CLEANUP closed match=closed:command:key ownerSession=owner metadata=${join(fileDir, "b.json")}`);
   expect(out).toContain("SLACK skipped (DORI_SLACK_TOKEN not set)");
-  expect(out).toContain("PANES unavailable (herdr pane list failed)");
+  expect(out).toContain("PANES unavailable (hc ls failed)");
   expect(code).toBe(1);
 });
 

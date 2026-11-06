@@ -34,9 +34,11 @@ export const sessionDirFor = (sessionsDir: string, cwd: string): string => join(
 export type SessionDeps = { readonly run: Runner; readonly sessionsDir: string; readonly listDir?: (dir: string) => readonly string[] };
 
 export const resolveSession = async (pane: string, cwd: string, table: readonly Proc[], deps: SessionDeps): Promise<SessionHit> => {
-  const info = await deps.run(["herdr", "pane", "process-info", "--pane", pane]);
-  const shellPid = info.code === 0 ? Number((JSON.parse(info.out) as { result?: { process_info?: { shell_pid?: number } } }).result?.process_info?.shell_pid ?? 0) : 0;
-  const agent = shellPid ? descendants(table, shellPid).find((p) => AGENT.test(p.cmd) && !/\bmcp\b/.test(p.cmd)) : undefined;
+  const info = await deps.run(["hc", "get", pane, "--json"]);
+  const rootPid = info.code === 0 ? Number((JSON.parse(info.out) as { pid?: number }).pid ?? 0) : 0;
+  // hc starts the agent as the terminal's root process, so the root itself is the first candidate.
+  const root = table.find((p) => p.pid === rootPid);
+  const agent = rootPid ? [...(root ? [root] : []), ...descendants(table, rootPid)].find((p) => AGENT.test(p.cmd) && !/\bmcp\b/.test(p.cmd)) : undefined;
   if (!agent) return { id: "", via: "none" };
   const argv = agent.cmd.split(/\s+/);
   const flagAt = argv.indexOf("--session");

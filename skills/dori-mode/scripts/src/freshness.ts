@@ -25,7 +25,7 @@ export const scrubForThread = (line: string, home: string): string =>
     .trim();
 
 // A report is a line that starts with [REPORT], or the last quoted element of an argv row, the shape lanes are told
-// to send it in: ["herdr", "pane", "run", "lead:p1", "[REPORT] key | kind | text"]. Instructions
+// to send it in: ["hc", "send", "<lead>", "[REPORT] key | kind | text"]. Instructions
 // and prompts that quote the grammar mid-sentence are dropped before parsing, so an example is never posted as the
 // lane's progress. A report whose whole text is one unfilled placeholder ($name, ${name}, {name}, %s, <what>) is a
 // template, quoted or not (#29). The match is anchored to the [REPORT] key | kind | text structure, so

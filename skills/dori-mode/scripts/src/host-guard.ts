@@ -32,8 +32,8 @@ export const sampleHost = async (run: Runner, dataPath = "/"): Promise<HostSampl
   const diskFreeGb = num(df.out.split("\n").at(-1)?.trim().split(/\s+/)[3], 0) / 1_048_576;
   const swap = await run(["sysctl", "-n", "vm.swapusage"]);
   const swapFreeGb = num(/free = ([\d.]+)M/.exec(swap.out)?.[1], 0) / 1024;
-  const pl = await run(["herdr", "pane", "list"]);
-  const panes = pl.code === 0 ? (JSON.parse(pl.out) as { result: { panes: unknown[] } }).result.panes.length : -1;
+  const pl = await run(["hc", "ls", "--json"]);
+  const panes = pl.code === 0 ? ((JSON.parse(pl.out) as { terminals?: unknown[] }).terminals ?? []).length : -1;
   return { load1, memFreePct, diskFreeGb, swapFreeGb, panes };
 };
 

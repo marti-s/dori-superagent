@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 
 import { type DoriConfig, fill } from "./config.ts";
 import type { FlowDeps } from "./done-flow.ts";
-import { readScreen, statusLookup } from "./panes.ts";
+import { laneSpace, nameTab, readScreen, statusLookup } from "./panes.ts";
 import { LANE_KEY, type Lane, RESERVED_LANE_KEY } from "./registry.ts";
 import { iso } from "./run.ts";
 import { Reports } from "./reports.ts";
@@ -55,7 +55,7 @@ const BRIEF_START = "<!-- dori launch: the brief starts below -->";
 const FOOTER_START = "<!-- dori launch: footer start -->";
 const FOOTER_END = "<!-- dori launch: footer end -->";
 
-// startLane writes the launch text over the brief before the tab exists, so a retry after a failed tab create reads a
+// startLane writes the launch text over the brief before the terminal exists, so a retry after a failed hc run reads a
 // brief that already has lessons and a footer. Rebuild from the text between the markers launch wrote, so a retry ships
 // what a first launch would. Only a file that ends with launch's footer is cut: the owner's text may quote the heading.
 const originalBrief = (text: string): string => {
@@ -72,10 +72,10 @@ export const footer = (lane: Lane, leadPane: string, identities: DoriConfig["rep
   FOOTER_HEADING,
   `- Key: ${lane.key}. Work thread: ${lane.thread}.`,
   `- Done = ${lane.done}. The lane closes only when every signal reads back live.`,
-  `- Persist each milestone, blocker, question, halt and completion with ${CLI} report ${lane.key} --kind milestone|blocker|question|halted|done --text "what, with evidence links". It appends reports.jsonl and prints the human [REPORT] line; send that line to pane ${leadPane || "(lead pane)"} as an argv array, never a shell string.`,
+  `- Persist each milestone, blocker, question, halt and completion with ${CLI} report ${lane.key} --kind milestone|blocker|question|halted|done --text "what, with evidence links". It appends reports.jsonl and prints the human [REPORT] line; send that line to the lead as the argv array ["hc", "send", ${JSON.stringify(leadPane || "<lead pane>")}, "[REPORT] ..."], never a shell string.`,
   ...(Object.keys(identities).length ? [
     "- Before committing, set the repository's identity below for that command only; never change the global Git identity. For a repository not listed, ask the lead for its identity before the first commit.",
-    ...Object.entries(identities).map(([repo, identity]) => `  - ${repo}: git -c user.name=${quoteForPane(identity.name)} -c user.email=${quoteForPane(identity.email)} commit ...`),
+    ...Object.entries(identities).map(([repo, identity]) => `  - ${repo}: git -c user.name=${quoteArg(identity.name)} -c user.email=${quoteArg(identity.email)} commit ...`),
   ] : []),
   `- Before claiming PR work done, run ${CLI} verify-pr <owner/repo> <number>. A PR with source fix commits must change a test or carry a "No test: <reason>" line in its body; a fix commit without its own test is a warning. Run the printed UI test loop at the reported head before calling those tests stable.`,
   `- After each completed step: ${CLI} checkpoint ${lane.key} --step <unique-step> --result <result> --evidence <path-or-URL> [--remote-effect <completed-push/merge/deploy-receipt>] (one flag per receipt).`,
@@ -123,19 +123,23 @@ const startLane = async (deps: FlowDeps, input: LaunchInput, draft: Lane, preamb
   const model = input.model ?? deps.config.defaultModel;
   const cwd = input.cwd ?? deps.config.defaultCwd;
   await Bun.write(input.brief, preamble);
-  const created = await deps.run(["herdr", "tab", "create", ...(deps.config.laneWorkspace ? ["--workspace", deps.config.laneWorkspace] : []), "--cwd", cwd, "--label", input.key, "--no-focus"]);
-  if (created.code !== 0) throw new LaunchError(`herdr tab create failed: ${created.err || created.out}`);
-  const made = (JSON.parse(created.out) as { result: { root_pane: { pane_id: string; tab_id?: string }; tab_id?: string } }).result;
-  const pane = made.root_pane.pane_id;
-  const tab = made.tab_id ?? made.root_pane.tab_id;
-  // Registered before the agent starts: dori report refuses an unknown key, so a fast lane's first report would be lost.
-  const lane: Lane = { ...draft, pane, ...(tab ? { tab } : {}) };
+  const prompt = `${deps.config.launchKeywords}. Read and execute the lane brief at ${input.brief} in full. You are the ${input.key} lane; report as the brief's footer says.`;
+  const space = await laneSpace(deps.run, deps.config.laneWorkspace);
+  const created = await deps.run([
+    "hc", "run", "--bg", "--json", "--name", input.key, "--no-parent", "--outlive-parent", "--cwd", cwd,
+    ...(space.id ? ["--label", `herdr.space=${space.id}`, "--label", `where=${space.name} / ${input.key}`] : []),
+    "--", ...fill(deps.config.agentCommand, { model, prompt }),
+  ]);
+  if (created.code !== 0) throw new LaunchError(`hc run failed: ${created.err || created.out}`);
+  const pane = (JSON.parse(created.out) as { address: string }).address;
+  // The pane and the tab are both the hc address. Registered right after the agent starts: dori report refuses an
+  // unknown key, so the lane is written before anything else (including the tab rename) can delay it.
+  const lane: Lane = { ...draft, pane, tab: pane };
   await deps.registry.write(lane);
+  await nameTab(deps.run, pane, input.key);
   // The launch is an activity record, not a report: it starts the journal (so the screen is watched for a stall) but is
   // never posted to the thread as if the agent had reported.
   new Reports(deps.config.stateDir).append({ type: "activity", key: lane.key, at: iso(deps.clock), state: "running", text: `lane launched in ${pane}` });
-  const prompt = `${deps.config.launchKeywords}. Read and execute the lane brief at ${input.brief} in full. You are the ${input.key} lane; report as the brief's footer says.`;
-  await deps.run(["herdr", "pane", "run", pane, fill(deps.config.agentCommand, { model, prompt }).map(quoteForPane).join(" ")]);
   const started = deps.clock.now();
   await deps.clock.sleep(20_000);
   const screen = await readScreen(deps.run, pane, 40);
@@ -166,7 +170,7 @@ const startLane = async (deps: FlowDeps, input: LaunchInput, draft: Lane, preamb
   return { lane, startup: `STARTUP_UNCONFIRMED ${input.key} ${pane}: ${why}; last lines: ${lastLines(screen)}` };
 };
 
+const quoteArg = (arg: string): string => (/^[\w./:@=-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`);
+
 const lastLines = (screen: string): string =>
   screen.split("\n").map((s) => s.trim()).filter(Boolean).slice(-3).join(" / ").replace(/\/(Users|home|Volumes|private)\/\S+/g, "(local path)").slice(0, 240) || "(blank)";
-
-export const quoteForPane = (arg: string): string => (/^[\w./:@=-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`);

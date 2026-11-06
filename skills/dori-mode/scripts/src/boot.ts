@@ -207,7 +207,7 @@ export const bootCheck = async (deps: BootDeps): Promise<{ exitCode: number; lin
     panes = await listPanes(deps.run);
   } catch {
     failed = true;
-    lines.push("PANES unavailable (herdr pane list failed)");
+    lines.push("PANES unavailable (hc ls failed)");
   }
   if (panes) {
     const result = reconcilePanes(lanes, panes);

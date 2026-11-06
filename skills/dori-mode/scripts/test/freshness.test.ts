@@ -4,7 +4,7 @@ import { freshnessTick, anchoredReportLine } from "../src/freshness.ts";
 import { depsFor, fakeClock, newWorld, withState } from "./fakes.ts";
 
 // Rendered rows in the shapes real panes show: an instruction, a prompt, argv, and a wrapped report.
-const instruction = " truthful [REPORT] docs-research | milestone | current completed axes\n and remaining checks to lead lead:p1 using safe argv herdr pane run.";
+const instruction = " truthful [REPORT] docs-research | milestone | current completed axes\n and remaining checks to lead lead:p1 using safe argv hc send.";
 const report = "[REPORT] pkg-release-fix | blocker | Attempt 2 failed. The amd64 build passed, then the registry denied the push again at 14:14:29Z; the arm64 build hit a";
 const wrappedReport = ` ${report}\n CDN 500 and recovered; CI passed. Two attempts now show the same registry denial.`;
 
@@ -104,20 +104,20 @@ test("template shapes from #29 are not reports; the emitted report still wins", 
 
 test("a [REPORT] that is a whole quoted argv element is a report; prose quoting the grammar and templates are not", () => {
   // Given the argv row a lane's own pane shows after sending its report the documented way.
-  const argv = '["herdr", "pane", "run", "lead:p1", "[REPORT] demo-lane | milestone | tests pass, PR opened"]';
+  const argv = '["hc", "send", "lead:p1", "[REPORT] demo-lane | milestone | tests pass, PR opened"]';
   // When it is parsed alone, or in single quotes inside a call; then the element is the report.
   expect(anchoredReportLine(argv, "demo-lane")).toBe("[REPORT] demo-lane | milestone | tests pass, PR opened");
-  expect(anchoredReportLine("Bun.spawn(['herdr', 'pane', 'run', 'lead:p1', '[REPORT] demo-lane | done | merged as abc123'])", "demo-lane")).toBe("[REPORT] demo-lane | done | merged as abc123");
+  expect(anchoredReportLine("Bun.spawn(['hc', 'send', 'lead:p1', '[REPORT] demo-lane | done | merged as abc123'])", "demo-lane")).toBe("[REPORT] demo-lane | done | merged as abc123");
   // Then prose that quotes the grammar mid-sentence, and #29 templates inside argv, are still dropped.
   for (const row of [
     'Send "[REPORT] demo-lane | milestone | tests pass" to the lead pane',
     'echo "[REPORT] demo-lane | milestone | tests pass"',
     'Example from the docs: run, "[REPORT] demo-lane | milestone | all tests green", then wait.',
-    '["herdr", "pane", "run", lead, "[REPORT] demo-lane | milestone | unquoted element before it"]',
-    '["[REPORT] demo-lane | milestone | report not last", "herdr"]',
-    '["herdr", "pane", "run", "lead:p1", "[REPORT] demo-lane | milestone | $message"]',
-    '["herdr", "pane", "run", "lead:p1", "[REPORT] demo-lane | milestone | %s"]',
-    '["herdr", "pane", "run", "lead:p1", "[REPORT] demo-lane | milestone | ${text}"]',
+    '["hc", "send", lead, "[REPORT] demo-lane | milestone | unquoted element before it"]',
+    '["[REPORT] demo-lane | milestone | report not last", "hc"]',
+    '["hc", "send", "lead:p1", "[REPORT] demo-lane | milestone | $message"]',
+    '["hc", "send", "lead:p1", "[REPORT] demo-lane | milestone | %s"]',
+    '["hc", "send", "lead:p1", "[REPORT] demo-lane | milestone | ${text}"]',
   ]) expect(anchoredReportLine(row, "demo-lane")).toBeNull();
   // And the argv report stays the latest one when an instruction follows it.
   expect(anchoredReportLine(`${argv}\nSend "[REPORT] demo-lane | milestone | next step" to the lead`, "demo-lane")).toBe("[REPORT] demo-lane | milestone | tests pass, PR opened");

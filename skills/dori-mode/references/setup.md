@@ -2,14 +2,14 @@
 
 Run these once, in order. Stop and ask the owner wherever a step needs their choice or their hand.
 
-## 1. herdr
+## 1. Herdr + hc
 
-herdr is the terminal multiplexer the Dori runs in. Every lane is a herdr tab, and herdr lets you read a pane, type into it and see which process runs there.
+Herdr is the terminal app the Dori runs in. Every lane is an hc terminal shown as a Herdr tab. `hc` starts, reads, messages and closes terminals; `herdr-app` only changes what the person sees, like tab names.
 
 ```sh
-curl -fsSL https://herdr.dev/install.sh | sh
-herdr integration install pi        # or the integration for the agent you run in
-herdr --skill                       # load its skill unless it is already in your context
+# install Herdr from github.com/herdrdev/herdr-app; it puts herdr-app and hc in ~/.local/bin
+hc --skill                          # load its skill unless it is already in your context
+herdr-app --skill                   # same for the app CLI
 ```
 
 ## 2. Messenger
@@ -55,7 +55,7 @@ cd skills/dori-mode/scripts && bun install && bun link    # puts `dori` on PATH
 mkdir -p ~/.dori && cp ../references/config.example.json ~/.dori/config.json
 ```
 
-Then edit `~/.dori/config.json`: at least `leadPane` (your own herdr pane, from `herdr pane current`), `laneWorkspace`, `defaultCwd`, and the two hooks if you want lane threads updated automatically. `references/scripts.md` explains every field.
+Then edit `~/.dori/config.json`: at least `leadPane` (your own hc terminal address, from `echo $HC_TERMINAL_ID`), `laneWorkspace`, `defaultCwd`, and the two hooks if you want lane threads updated automatically. `references/scripts.md` explains every field.
 
 ## 5. Monitors
 

@@ -1,6 +1,6 @@
 # Sessions (lanes)
 
-A lane is one agent session doing one job in its own herdr tab. You launch it, track it in the registry, answer it when it is stuck, and close it when its work is proven done.
+A lane is one agent session doing one job in its own Herdr tab. You launch it, track it in the registry, answer it when it is stuck, and close it when its work is proven done.
 
 ## Launching
 
@@ -10,7 +10,7 @@ dori launch fix-login --title "Fix the login redirect loop" \
   --thread "telegram:<chat>/<topic>" --model anthropic/claude-opus-5-5
 ```
 
-`launch` checks the key and the `Done =` line, appends a footer to the brief, opens a tab in `laneWorkspace`, starts the agent, and after 20 seconds checks the start: `STARTUP_ERROR` on a known failure (missing module, no API key, rate limit, quota), also when one shows on an idle agent during the goal wait, `STARTUP_OK` only when herdr reports the agent idle or working and it shows a goal (checked again every 10 seconds for up to 60 more seconds), `STARTUP_NO_GOAL` when it still shows no goal after that, `STARTUP_UNCONFIRMED` otherwise. On `STARTUP_ERROR`, relaunch on another model; on `STARTUP_NO_GOAL`, tell the lane to set its goal, since a lane without one stops after its first turn; on `STARTUP_UNCONFIRMED`, look at the pane before doing anything else.
+`launch` checks the key and the `Done =` line, appends a footer to the brief, opens a tab in `laneWorkspace`, starts the agent, and after 20 seconds checks the start: `STARTUP_ERROR` on a known failure (missing module, no API key, rate limit, quota), also when one shows on an idle agent during the goal wait, `STARTUP_OK` only when the agent reads as idle or working and it shows a goal (checked again every 10 seconds for up to 60 more seconds), `STARTUP_NO_GOAL` when it still shows no goal after that, `STARTUP_UNCONFIRMED` otherwise. On `STARTUP_ERROR`, relaunch on another model; on `STARTUP_NO_GOAL`, tell the lane to set its goal, since a lane without one stops after its first turn; on `STARTUP_UNCONFIRMED`, look at the pane before doing anything else.
 
 Write the brief like a careful prompt:
 
@@ -48,7 +48,7 @@ One JSON file per lane under `<stateDir>/lanes/`, written atomically (temp file 
 | Field | Meaning |
 |---|---|
 | `thread` | where its updates go, as `platform:thread` (or `none`) |
-| `pane`, `tab` | its herdr location |
+| `pane`, `tab` | its hc terminal address (the pane and tab are the same address) |
 | `session` | the agent's own session id, so a closed job can be reopened later |
 | `status` | `working`, `done-claimed`, `verified-done`, `not-done`, `closed` |
 | `claim`, `objection`, `history` | what was claimed, what was objected, every status change |
@@ -69,8 +69,8 @@ When the owner writes in a closed lane's thread, reopen its recorded session in 
 
 Before you type into a pane:
 
-1. check it runs a live agent (`herdr pane process-info --pane <id>`), not a shell, a stopped agent or a startup screen;
-2. read it (`herdr pane read <id> --source recent-unwrapped --lines 40`) and confirm the input line is empty and no approval or question prompt is open;
+1. check it runs a live agent (`hc get <t> --json`: `state` is `live`, `foreground` is the agent rather than a shell, and `status`, when the agent reports one, is `idle`), not a shell, a stopped agent or a startup screen;
+2. read it (`hc read <t> --lines 40`) and confirm the input line is empty and no approval or question prompt is open;
 3. send once, as one argument (the scripts' `sendVerified` does this);
 4. confirm delivery from a state change: the pane's `agent_status` moving to working, or the message showing up in the session record. Never press Enter again because of what the screen shows; if no change shows up, treat the send as unconfirmed.
 

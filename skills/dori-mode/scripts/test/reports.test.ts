@@ -165,7 +165,7 @@ test("new report time suppresses nudges even when registry lastReplyAt is old", 
   reports.report(lane.key, "milestone", "just completed step", T0 + 29 * MIN);
   // When freshness runs; then no stale-registry nudge is sent.
   expect(await freshnessTick(deps, "/home/test")).toEqual([]);
-  expect(world.calls.some((call) => call[2] === "send-text")).toBe(false);
+  expect(world.calls.some((call) => call[0] === "hc" && call[1] === "send")).toBe(false);
 });
 
 test("a stalled structured lane alerts once even without a thread hook", async () => {
@@ -177,7 +177,7 @@ test("a stalled structured lane alerts once even without a thread hook", async (
   // When observed twice; then one alert is emitted and no input is injected.
   expect((await freshnessTick(deps, "/home/test")).map((act) => act.kind)).toEqual(["stalled"]);
   expect(await freshnessTick(deps, "/home/test")).toEqual([]);
-  expect(world.calls.some((call) => call[2] === "send-text")).toBe(false);
+  expect(world.calls.some((call) => call[0] === "hc" && call[1] === "send")).toBe(false);
 });
 
 test.each(["blocker", "halted", "done", "question"] as const)("a %s report still reaches the thread, but the lane is not nudged", async (kind) => {
@@ -191,7 +191,7 @@ test.each(["blocker", "halted", "done", "question"] as const)("a %s report still
   // When freshness runs; then the report is posted and nothing is sent to the pane.
   expect((await freshnessTick(deps, "/home/test")).map((act) => act.kind)).toEqual(["posted"]);
   expect(world.calls.find((call) => call[0] === "notify")?.[2]).toContain("needs the owner");
-  expect(world.calls.some((call) => call[2] === "send-text")).toBe(false);
+  expect(world.calls.some((call) => call[0] === "hc" && call[1] === "send")).toBe(false);
 });
 
 test("a lane that reports every 10 minutes still gets its latest report posted, at most once per postAfterMin", async () => {
