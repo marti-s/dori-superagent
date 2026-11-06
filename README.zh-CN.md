@@ -4,11 +4,11 @@
 
 # dori-superagent
 
-一个主动式、多会话的编程 Agent harness：约 1,600 行 TypeScript，跑在 [herdr](https://github.com/herdrdev/herdr) 和 [omo](https://github.com/code-yeongyu/oh-my-openagent) 之上。
+一个主动式、多会话的编程 Agent harness：约 1,600 行 TypeScript，跑在 [Herdr](https://github.com/herdrdev/herdr-app)（它的 `hc` 核心和 Herdr 应用）和 [omo](https://github.com/code-yeongyu/oh-my-openagent) 之上。
 
 [English](README.md) | [한국어](README.ko.md) | 简体中文 | [日本語](README.ja.md)
 
-和你对话的只有一个 lead 会话。每个任务是一条 lane：一个独立的 omo 会话，开在自己的 herdr 标签页里，从一份写好的任务简报（brief）启动，以一条必须附带证据的 READY 收尾。duty 循环负责催没动静的 lane、向 lead 上报，并把发给忙碌窗格（pane）的消息先存起来，等它能读了再送。合并要过一道门禁：精确 head 上的 CLEAR 评审回执，加上全绿的检查项。
+和你对话的只有一个 lead 会话。每个任务是一条 lane：一个独立的 omo 会话，开在自己的 Herdr 标签页里，从一份写好的任务简报（brief）启动，以一条必须附带证据的 READY 收尾。duty 循环负责催没动静的 lane、向 lead 上报，并把发给忙碌窗格（pane）的消息先存起来，等它能读了再送。合并要过一道门禁：精确 head 上的 CLEAR 评审回执，加上全绿的检查项。
 
 ## 缘起
 
@@ -18,13 +18,13 @@ DeepSeek 发布了 [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh
 
 - 2026-04-18：团队模式合入 omo，多个 Agent 会话各占一个终端窗格，各带一个 worktree（[f1268c0](https://github.com/code-yeongyu/oh-my-openagent/commit/f1268c0)、[e303fee](https://github.com/code-yeongyu/oh-my-openagent/commit/e303fee)）。
 - 2026-05-06：Dori 这个名字进入 omo 的 README（[#3807](https://github.com/code-yeongyu/oh-my-openagent/pull/3807)）。
-- 2026-10-07：本仓库以 `omo-dori-mode-experimental` 的名字发布 Dori 模式（[ce53e4d](https://github.com/sisyphuslabs/dori-superagent/commit/ce53e4d)）：一个 Agent 把每项工作交给 herdr 标签页里独立的 Agent 会话，活干完了才关掉它。git 历史是公开的。
+- 2026-10-07：本仓库以 `omo-dori-mode-experimental` 的名字发布 Dori 模式（[ce53e4d](https://github.com/sisyphuslabs/dori-superagent/commit/ce53e4d)）：一个 Agent 把每项工作交给 Herdr 标签页里独立的 Agent 会话，活干完了才关掉它。git 历史是公开的。
 - 2026-10-31：DeepSeek 原型的首次提交。
 - 2026-11-01 前后：DeepSeek 的文章。
 
 我们每天就是这么干活的。omo 有 70k+ star。从 2026-10-03 到 2026-11-02 的 31 天里，[作者的 GitHub 贡献日历](https://github.com/code-yeongyu)记录了 38,656 次贡献：平均每天约 1,250 次，峰值是 2026-10-16 的 2,227 次和 2026-10-29 的 2,001 次。也就是一天最多约 2,000 次贡献，全部出自这套方案的完整版。
 
-仓库根目录的 harness 是它的最小版本：只保留光靠 herdr 和 omo 就能跑起来的那部分，其他什么都没接。
+仓库根目录的 harness 是它的最小版本：只保留光靠 Herdr 和 omo 就能跑起来的那部分，其他什么都没接。
 
 ## 结构相同，理念相同
 
@@ -49,17 +49,17 @@ DeepSeek 发布了 [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh
 | 只在需要人出面时才开口，一次只问一个问题 | 每个决策都带着选项、Dori 自己的建议和一张图 |
 | 如实汇报，从不绕过阻塞 | 没有证据不说“完成”；在真实案例上核对过，汇报的是已合并的结果 |
 
-Dori 这一列是我们生产环境里的 Dori 和 Dori 模式（`skills/dori-mode`）；仓库根目录的 harness 在 herdr + omo 上实现了其中 lane、收件箱、duty 和合并门禁这一部分。
+Dori 这一列是我们生产环境里的 Dori 和 Dori 模式（`skills/dori-mode`）；仓库根目录的 harness 在 Herdr + omo 上实现了其中 lane、收件箱、duty 和合并门禁这一部分。
 
 ## 架构
 
 ![architecture](docs/architecture.png)
 
-三个角色，每个都是 herdr 窗格里的一个 omo 会话。herdr 提供工作区、标签页和窗格，能识别出窗格里跑的 omo 是一个 Agent，并通过 CLI 报告它的状态（idle、working、blocked、done）。dori 对任何窗格动手之前，先读这个状态。
+三个角色，每个都是一个 omo 会话，跑在各自的 hc 终端里，在 Herdr 应用中显示为一个标签页。hc（herdr-core）负责运行这些终端，并报告每个终端的屏幕内容和前台进程；dori 对任何窗格动手之前，先从这些信息推断出 Agent 的状态（idle、working、blocked、前台是 shell，或者已经没了）。
 
 lead 是唯一和你对话的会话。它把你的请求写成 brief，用 `dori start` 开一条 lane，读 lane 发回来的东西，然后合并。
 
-一条 lane 就是一个 omo 会话，开在自己的 herdr 标签页里，启动时拿到一份 brief，后面附着 lane 规则（`prompts/lane-footer.md`）。它用 `dori report` 汇报阶段进展，用 `dori ready` 收尾；`dori ready` 没有证据链接就不会发出去。
+一条 lane 就是一个 omo 会话，开在自己的 Herdr 标签页里，启动时拿到一份 brief，后面附着 lane 规则（`prompts/lane-footer.md`）。它用 `dori report` 汇报阶段进展，用 `dori ready` 收尾；`dori ready` 没有证据链接就不会发出去。
 
 duty 循环是 `dori duty --interval 60`，一个普通进程，跑在 duty omo 会话旁边的窗格里。每一轮它把排队的消息送进已经空闲的窗格，催一下沉默太久的 lane，向 lead 上报，并把窗格已经消失的 lane 标记为 lost。`dori duty stop --text '原因'` 是它的急停开关：在 `dori duty resume` 之前，每一轮只打印 `DUTY stopped: <原因>`，跳过所有 duty 工作（不送消息、不催促、不上报、不记 duty 计数），排队的消息留在 inbox 里等着。`dori duty status` 显示它是否停着以及原因。
 
@@ -74,7 +74,7 @@ duty 循环是 `dori duty --interval 60`，一个普通进程，跑在 duty omo 
 | DeepSeek super-agent | dori | 在本仓库里 |
 |---|---|---|
 | Router 会话：和人对话，分派工作 | LEAD 会话：唯一和人对话的会话；开 lane，合并 | `prompts/lead.md`，`src/cli.ts` 里的 `up()` |
-| Worker 会话，一个 ticket 一个 | LANE：每个任务一个 omo 会话，有自己的 herdr 标签页和自己的 brief | `src/harness.ts` 里的 `startLane()`，`prompts/lane-footer.md` |
+| Worker 会话，一个 ticket 一个 | LANE：每个任务一个 omo 会话，有自己的 Herdr 标签页和自己的 brief | `src/harness.ts` 里的 `startLane()`，`prompts/lane-footer.md` |
 | Ticket + Mandate | brief 文件 + lane 规则页脚，以及必须附带证据的 READY | `~/.dori/briefs/<key>.md`，`src/harness.ts` 里的 `ready()` |
 | 触发器批处理：事件按轮次成批送达 | 窗格收件箱：发给忙碌窗格的消息先排队，等它空闲时合成一批送达 | `src/harness.ts` 里的 `send()`、`flushInbox()`；`src/store.ts` 里的 `inbox/` |
 | Watchdog | DUTY 循环：清空收件箱，10/20 分钟催促，40 分钟上报，检测消失的窗格 | `src/harness.ts` 里的 `dutyTick()`，`prompts/duty.md`，`prompts/nudge.md` |
@@ -85,7 +85,7 @@ duty 循环是 `dori duty --interval 60`，一个普通进程，跑在 duty omo 
 
 ## 快速开始
 
-需要 Bun 1.3 或更高版本、herdr、omo，以及 GitHub CLI `gh`（用来读 PR 的 head SHA、检查项状态，以及执行合并）。
+需要 Bun 1.3 或更高版本、Herdr（`~/.local/bin/hc` 和 `herdr-app`）、omo，以及 GitHub CLI `gh`（用来读 PR 的 head SHA、检查项状态，以及执行合并）。
 
 ```sh
 git clone https://github.com/sisyphuslabs/dori-superagent
@@ -94,21 +94,21 @@ bun install
 bun link   # puts `dori` on your PATH; or write `bun src/cli.ts` wherever `dori` appears below
 ```
 
-启动 herdr，然后在 shell 里：
+启动 Herdr 应用和它的核心服务，然后在 shell 里：
 
 ```sh
 dori up
-# UP lead=w1:p1 duty=w1:p2 loop=w1:p3 hourly=w1:p4 home=~/.dori
+# UP lead=t1 duty=t2 loop=t3 hourly=t4 home=~/.dori
 ```
 
-这会开一个名为 `dori` 的 herdr 工作区，里面有一个 lead 窗格（system prompt 末尾附加了 `prompts/lead.md` 的 omo）、一个 duty 窗格（附加了 `prompts/duty.md` 的 omo），下面是 duty 循环，再下面是每小时循环。和 lead 窗格对话即可。它会自己写 brief（目标、输入、交付物、停止条件、约束；见 [`examples/brief.md`](examples/brief.md)）并开 lane，你也可以在 shell 里手动做同样的事：
+这会开四个 hc 终端，各占一个 Herdr 标签页：一个 lead（system prompt 末尾附加了 `prompts/lead.md` 的 omo）、一个 duty 会话（附加了 `prompts/duty.md` 的 omo）、duty 循环，以及每小时循环。和 lead 窗格对话即可。它会自己写 brief（目标、输入、交付物、停止条件、约束；见 [`examples/brief.md`](examples/brief.md)）并开 lane，你也可以在 shell 里手动做同样的事：
 
 ```sh
 dori start fix-flaky-login --brief examples/brief.md
-# STARTED fix-flaky-login pane=w1:p5 brief=~/.dori/briefs/fix-flaky-login.md
+# STARTED fix-flaky-login pane=t5 brief=~/.dori/briefs/fix-flaky-login.md
 dori status
-# lead=w1:p1 duty=w1:p2 home=~/.dori
-# fix-flaky-login          working  w1:p5    active 0m ago  start: examples/brief.md
+# lead=t1 duty=t2 home=~/.dori
+# fix-flaky-login          working  t5       active 0m ago  start: examples/brief.md
 ```
 
 lane 的 key 要匹配 `^[a-z][a-z0-9-]{1,40}$`，已经开着的 key 会被拒绝。
@@ -130,7 +130,27 @@ dori merge owner/repo#12             # gh pr merge --squash --match-head-commit 
 dori done fix-flaky-login            # closes the lane's pane; only a READY lane can be closed
 ```
 
-`dori send <lead|duty|key|pane> --text '...'` 把一条消息送到某个窗格，窗格忙的时候就排队。`dori role <lead|duty> [PANE]` 用于没走 `dori up` 时手动注册窗格。省略 `--text` 则从 stdin 读消息。Agent 看到的命令渲染时带着 `src/cli.ts` 的完整路径，并且设置了 `DORI_HOME`，所以它们的 PATH 上不需要有 `dori`。环境变量：`DORI_HOME`（状态目录，默认 `~/.dori`）、`DORI_AGENT_CMD`（默认 `omo`）、`DORI_HERDR_SESSION`（具名的 herdr 会话）、`DORI_CMD`（告诉 Agent 怎么调用 dori）。
+`dori send <lead|duty|key|pane> --text '...'` 把一条消息送到某个窗格，窗格忙的时候就排队。`dori role <lead|duty> [PANE]` 用于没走 `dori up` 时手动注册终端（默认是 `HC_TERMINAL_ID`，也就是它所在的 hc 终端）。目标可以是一个角色、一个开着的 lane key，或者一个 hc 终端地址，比如 `t5`。省略 `--text` 则从 stdin 读消息。Agent 看到的命令渲染时带着 `src/cli.ts` 的完整路径，并且设置了 `DORI_HOME`，所以它们的 PATH 上不需要有 `dori`。环境变量：`DORI_HOME`（状态目录，默认 `~/.dori`）、`DORI_AGENT_CMD`（默认 `omo`）、`DORI_HERDR_APP`（`herdr-app` 的路径，默认 `~/.local/bin/herdr-app`）、`DORI_HERDR_SPACE`（见下文）、`DORI_CMD`（告诉 Agent 怎么调用 dori）。
+
+### 在 Herdr 上运行
+
+dori 用 `~/.local/bin/hc`（herdr-core）驱动所有终端，`herdr-app` 只用来给标签页命名。Herdr 和它的核心服务都在运行时：
+
+```sh
+cd /Users/martistaerfeldt/dev/dori-superagent
+export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"
+export DORI_TELEMETRY=0
+export DORI_AGENT_CMD=/Users/martistaerfeldt/.local/bin/omo-claude
+export DORI_HOME="$HOME/.dori-core"
+bun src/cli.ts up --cwd "$PWD"
+
+# Open a lane from a brief you have written:
+bun src/cli.ts start fix-login --brief /absolute/path/to/brief.md --cwd "$PWD"
+```
+
+lead、duty、duty 循环和每小时循环各有一个独立的、名字唯一的终端。核心没有创建 space 的命令，所以 dori 的每个终端（来自 `up`、`start`、两个循环以及每小时循环开的 lane）都落在同一个已有的应用 space 里，带上标签 `herdr.space=<id>` 和 `where='<space> / dori-<tab>'`。space 按下面的顺序取第一个可用的：`DORI_HERDR_SPACE=<herdr.space id>`；否则是启动 dori 的那个 hc 终端所在的 space（`HC_TERMINAL_ID`）；否则是 `start --workspace <space-name-or-id>` 指定的 space、名为 `dori` 的应用 space，或者第一个本地应用 space。一个应用 space 都没有时，用 `where='dori / dori-<tab>'`。Herdr 应用不从 `where` 读标签页名，所以每次启动之后，dori 在 `herdr-app ls` 里找到新终端的标签页，运行 `herdr-app do tab.rename`，改名为 `lead`、`duty`、`duty-loop`、`hourly-loop` 或 lane key；herdr-app 不存在或改名失败时，记一条日志，启动照常继续。`DORI_HERDR_APP=<path>` 用来替换 `~/.local/bin/herdr-app`（e2e 测试把它指向一个不存在的文件，这样就不会去改你窗口里的标签页名）。适配器会把调用方的 `DORI_*` 设置和 PATH 传给新终端，包括 Agent 和两个循环。
+
+核心不报告 omo 的 Agent 状态，所以 dori 读它的屏幕和前台进程：omo 输入框为空是 idle，出现 `Working` 或 `esc to interrupt` 是忙碌，出现提问或权限确认提示是 blocked。认不出来的屏幕，消息继续排队。缺少前台进程信息、或前台是 shell 时，发给 Agent 的消息都会被扣住；只有显式加上 `send --to-shell` 才会往 shell 里输入。
 
 ## harness 强制的规则
 
@@ -138,7 +158,7 @@ dori done fix-flaky-login            # closes the lane's pane; only a READY lane
 
 READY 必须带证据。没有至少一个 `--evidence` 链接，或者没有最终答案文本，`dori ready` 就会拒绝（`src/harness.ts` 里的 `ready()`）。文本和链接作为 `final` 存在 lane 记录上；`dori done` 拒绝任何状态不是 `ready` 的 lane，所以没有哪条 lane 能在没留下答案的情况下关闭。
 
-忙碌的窗格不会被打断。`dori send` 先向 herdr 查询窗格里 Agent 的状态。`idle` 或 `done` 立刻收到消息；其他状态下消息进入 `~/.dori/inbox/` 排队，命令打印 `QUEUED`。前台没有 Agent 在运行的窗格（Agent 已退出，或被 Ctrl+Z 挂起，shell 回到前台）绝不会被输入文字，因为输入到 shell 的文字会被当作命令执行：发给它的消息留在队列里，duty 循环会打印 `inbox-held`，直到窗格里重新有 Agent。确实要往普通 shell 里输入时，由操作者加上 `--to-shell`：只对这一条消息生效，不会作用于队列里的消息。等窗格空闲下来，duty 循环把队列合成一条消息送达，开头是 "N messages arrived while you were busy"（`src/harness.ts` 里的 `send()` 和 `flushInbox()`）。`dori done` 也是同样的等法：herdr 报告为 working 或 blocked 的窗格，它拒绝关闭。
+忙碌的窗格不会被打断。`dori send` 先从 hc 读出窗格的状态（见上文）。`idle` 的 Agent 立刻收到消息，方式是一次 `hc send`，粘贴消息再按回车；其他状态下消息进入 `~/.dori/inbox/` 排队，命令打印 `QUEUED`。前台没有 Agent 在运行的窗格（Agent 已退出，或被 Ctrl+Z 挂起，shell 回到前台）绝不会被输入文字，因为输入到 shell 的文字会被当作命令执行：发给它的消息留在队列里，duty 循环会打印 `inbox-held`，直到窗格里重新有 Agent。确实要往普通 shell 里输入时，由操作者加上 `--to-shell`：只对这一条消息生效，不会作用于队列里的消息。等窗格空闲下来，duty 循环把队列合成一条消息送达，开头是 "N messages arrived while you were busy"（`src/harness.ts` 里的 `send()` 和 `flushInbox()`）。`dori done` 也是同样的等法：herdr 报告为 working 或 blocked 的窗格，它拒绝关闭。
 
 10 分钟、20 分钟催，40 分钟上报。`src/harness.ts` 里有 `NUDGE_MINUTES = [10, 20, 40]`。一条 lane 10 分钟没有汇报、窗格也不在 working，就会在自己的窗格里收到 `prompts/nudge.md`；20 分钟时再收一次；到 40 分钟，duty 循环不再催，改为给 lead 发 `[ESCALATE <key>]`。`working` 状态的窗格会重置空闲计时；汇报过 `--status waiting` 或窗格处于 `blocked` 的 lane 不会被打扰；任何一次新汇报都把催促次数清零；窗格消失则报告为 `[LOST <key>]`。
 
@@ -169,7 +189,7 @@ dori backlog list
 
 ## Dori 模式（`skills/dori-mode`）
 
-Dori 模式是面向 IM 的那一半，2026-10-07 在本仓库发布。它把一个编程 Agent 会话变成常驻的 Agent，你在 IM 里和它说话。这个会话把每项工作交给 herdr 标签页里独立的 Agent 会话，为自己启动过的每个会话维护一份注册表，只有在工作被证明完成之后才关掉它：PR 已合并、issue 已关闭、版本已发布，或者一项它自己能跑的检查。它以一个 skill（`skills/dori-mode/SKILL.md` 加 `references/`）和自己的 Bun + TypeScript CLI 的形式发布，这个 CLI 也叫 `dori`。
+Dori 模式是面向 IM 的那一半，2026-10-07 在本仓库发布。它把一个编程 Agent 会话变成常驻的 Agent，你在 IM 里和它说话。这个会话把每项工作交给 Herdr 标签页里独立的 Agent 会话，为自己启动过的每个会话维护一份注册表，只有在工作被证明完成之后才关掉它：PR 已合并、issue 已关闭、版本已发布，或者一项它自己能跑的检查。它以一个 skill（`skills/dori-mode/SKILL.md` 加 `references/`）和自己的 Bun + TypeScript CLI 的形式发布，这个 CLI 也叫 `dori`。
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superagent/main/install.sh | bash
@@ -181,7 +201,7 @@ harness 和 Dori 模式都带一个叫 `dori` 的命令。一台机器只装其�
 
 ## 这不是什么
 
-一个最小实验。harness 是 Bun 上约 1,600 行 TypeScript，零运行时依赖，它不是我们的生产栈。有意不放进来的：跨机器的 mesh、heavy-slot 调度、聊天工具和工单系统的桥接，以及覆盖整个测试套件的回执。放进来的是光靠 herdr 和 omo 就能跑的部分：角色、lane、收件箱、duty 循环、每小时循环和待办，以及评审加合并门禁。`skills/dori-mode` 里的 Dori 模式是一个独立的 CLI，有自己的 IM 组件、主机守护和 heavy-slot 运行器；harness 不从它导入任何东西。
+一个最小实验。harness 是 Bun 上约 1,600 行 TypeScript，零运行时依赖，它不是我们的生产栈。有意不放进来的：跨机器的 mesh、heavy-slot 调度、聊天工具和工单系统的桥接，以及覆盖整个测试套件的回执。放进来的是光靠 Herdr 和 omo 就能跑的部分：角色、lane、收件箱、duty 循环、每小时循环和待办，以及评审加合并门禁。`skills/dori-mode` 里的 Dori 模式是一个独立的 CLI，有自己的 IM 组件、主机守护和 heavy-slot 运行器；harness 不从它导入任何东西。
 
 ## 遥测
 
@@ -201,17 +221,17 @@ dori 和 omo 用同一种方式发送匿名的使用计数：OTLP/HTTP JSON 日�
 
 ## 测试
 
-在仓库根目录跑 `bun test ./test/`，执行 harness 的 76 个测试，不调用任何模型。直接跑 `bun test` 会把 Dori 模式的测试也带上。
+在仓库根目录跑 `bun test ./test/`，执行 harness 的 147 个测试，不调用任何模型。直接跑 `bun test` 会把 Dori 模式的测试也带上。
 
-8 个 harness 单元测试（`test/harness.test.ts`）跑在一个假 herdr（`test/fake.ts`）上：它是一个录制器，顶替 `herdr` 和 `gh` 二进制，持有若干 Agent 状态可设置的窗格，还带一个由测试拨动的时钟。覆盖的场景有：lane 启动与 READY，lead 忙碌时的排队与成批送达，拒绝未知目标，10 和 20 分钟的催促、40 分钟的上报以及 WAITING 的 lane 不被打扰，working 和 lost 状态，合并门禁的每一个分支（没有回执、BLOCK、空检查列表、一项红色检查、全部跳过、CLEAR 加全绿），以及一个没有 VERDICT 行的评审者。
+15 个 harness 单元测试（`test/harness.test.ts`）让 `HerdrCore` 跑在一个假 hc（`test/fake.ts`）上：它是一个录制器，顶替 `hc`、`herdr-app` 和 `gh` 二进制，持有若干终端，终端的屏幕和前台进程跟随一个可设置的 Agent 状态变化，还带一个由测试拨动的时钟。覆盖的场景有：lane 启动与 READY，lead 忙碌时的排队与成批送达，拒绝未知目标，10 和 20 分钟的催促、40 分钟的上报以及 WAITING 的 lane 不被打扰，working 和 lost 状态，合并门禁的每一个分支（没有回执、BLOCK、空检查列表、一项红色检查、全部跳过、CLEAR 加全绿），以及一个没有 VERDICT 行的评审者。
 
-另有 19 个单元测试（`test/loop.test.ts`）在同一个假 herdr 上跑每小时循环：待办的添加、决定、移除和导入，启动顺序与预算，lane 已满、主机繁忙和有待决问题时的暂缓，done、lost 和已合并 lane 的同步，漏办检查，每个问题只问一次、只提醒一次，急停开关，活着的、已死的和损坏的锁，运行中被抢走的锁，放不回去而留在一旁的锁，lane 启动失败，一直启动失败直到变成问题的项目，两轮之间的等待时间，已经开出来却没能通知 lead 的 lane，试图跑出待办目录的 id，消失的 lane 记录，以及同一毫秒内的两轮。其中两个检查循环从不发出关窗格、合并或推送，漏办检查的测试还确认 lane 记录逐字节不变。
+另有 19 个单元测试（`test/loop.test.ts`）在同一个假 hc 上跑每小时循环：待办的添加、决定、移除和导入，启动顺序与预算，lane 已满、主机繁忙和有待决问题时的暂缓，done、lost 和已合并 lane 的同步，漏办检查，每个问题只问一次、只提醒一次，急停开关，活着的、已死的和损坏的锁，运行中被抢走的锁，放不回去而留在一旁的锁，lane 启动失败，一直启动失败直到变成问题的项目，两轮之间的等待时间，已经开出来却没能通知 lead 的 lane，试图跑出待办目录的 id，消失的 lane 记录，以及同一毫秒内的两轮。其中两个检查循环从不关闭终端、合并或推送，漏办检查的测试还确认 lane 记录逐字节不变。
 
 11 个遥测单元测试（`test/telemetry.test.ts`）覆盖：关闭开关；首次提示和每天一次的 `dori.daily_active`；每次安装只签发一次、缓存起来、401 之后重新签发的 key；与注册的 schema 相符的载荷（scope 名称和版本，只有允许的资源键，只有计数）；收集端在 200 响应里拒收的记录（`partialSuccess.rejectedLogRecords`）会被计数；每小时一次的 duty 汇总；离线首次运行时 `dori.installed` 和 `dori.daily_active` 会保留到发送成功为止；状态文件权限为 0600，状态文件损坏也不会抛出异常；调用立即返回，flush 到期限就放弃；同一个目录下同时启动的两次首次运行只会得到一个安装 id；以及收集端不可达或注册被拒时从不抛出异常，也不发送任何日志。
 
-2 个端到端测试（`test/e2e.test.ts`）。第一个在隔离的具名会话里起一个真实的 herdr 服务器，创建工作区，注册 lead 窗格，再启动一条 lane，其 Agent 用 `test/fixtures/fake-agent.sh` 顶替 omo。脚本读取 brief，调用 `dori report` 和 `dori ready`；测试检查 `[START]`、`[REPORT]`、`[READY]` 是否到达 lead 窗格，以及 `dori done` 是否关掉了这条 lane。第二个添加一个待办项目，运行 `dori loop --once`，检查循环启动的 lane 走到 READY、`[LOOP ...]` 到达 lead 窗格，以及 `dori loop stop` 之后的一轮什么也不做。PATH 上没有 `herdr` 时两者都会被跳过；两者都以 `DORI_TELEMETRY=0` 运行。`bun run typecheck` 执行 `tsc --noEmit`。
+2 个端到端测试（`test/e2e.test.ts`）。第一个在隔离的会话里（有自己的 `HC_SESSION` 和 XDG 路径）起一个真实的 hc 核心，注册一个运行 `cat` 的 lead 终端，再启动一条 lane，其 Agent 用 `test/fixtures/fake-agent.sh` 顶替 omo。脚本读取 brief，调用 `dori report` 和 `dori ready`；测试检查 `[START]`、`[REPORT]`、`[READY]` 是否到达 lead 的收件箱，而不是被输入到没有 Agent 的 lead 终端里，以及 `dori done` 是否关掉了这条 lane。第二个添加一个待办项目，运行 `dori loop --once`，检查循环启动的 lane 走到 READY、`[LOOP ...]` 到达 lead 的收件箱，以及 `dori loop stop` 之后的一轮什么也不做。`~/.local/bin/hc` 不存在时两者都会被跳过；两者都以 `DORI_TELEMETRY=0` 运行。`bun run typecheck` 执行 `tsc --noEmit`。
 
-Dori 模式有自己的 254 个测试，跑在假的 herdr、git 和 gh 上：
+Dori 模式有自己的 254 个测试，跑在假的 hc、herdr-app、git 和 gh 上：
 
 ```sh
 cd skills/dori-mode/scripts && bun install && bun test

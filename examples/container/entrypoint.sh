@@ -1,10 +1,10 @@
 #!/bin/sh
 set -eu
 
-# dori-superagent container entrypoint: start the herdr server, then run the
-# container's command. Panes are hosted by the server, so they are reachable from any
-# `docker exec -it` session. nohup keeps the server alive past the exec below.
+# dori-superagent container entrypoint: start the herdr-core (hc) server, then run the
+# container's command. Terminals are hosted by the core, so they are reachable from any
+# `docker exec -it` session and outlive the shell that started them.
 
-nohup herdr server >/dev/null 2>&1 </dev/null &
+hc server start >/dev/null
 
 exec "$@"

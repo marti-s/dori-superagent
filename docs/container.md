@@ -6,19 +6,23 @@ credentials out of it — logins happen once, inside the running container, and 
 volumes.
 
 The image builds for `linux/amd64` and `linux/arm64`; the builder picks your host
-architecture automatically. Every downloaded binary (gh, node, bun, herdr) is verified
+architecture automatically. Every downloaded binary (gh, node, bun, herdr-core) is verified
 against a pinned sha256; npm packages and the harness are pinned by version and commit.
 
 ## Files
 
-- `examples/container/Dockerfile` — Ubuntu 24.04 with gh, node, bun and herdr
+- `examples/container/Dockerfile` — Ubuntu 24.04 with gh, node, bun and herdr-core (`hc`)
   sha256-verified, plus agent-messenger, omo and the dori harness pinned by version
   and commit.
 - `examples/container/compose.yaml` — one `dori` service with named volumes for all
   state, sized like a small dev machine.
-- `examples/container/entrypoint.sh` — warms the herdr server, then runs the command.
+- `examples/container/entrypoint.sh` — starts the hc core, then runs the command.
 
-Ubuntu, not Alpine: bun and herdr need glibc.
+Ubuntu, not Alpine: bun and herdr-core need glibc. herdr-core comes from its Linux release
+(`releases.herdr.dev/core/<version>/herdr-core-linux-<arch>.tar.gz`, checksums in
+`releases.herdr.dev/core/latest.json`) and is linked as `~/.local/bin/hc`, where dori looks
+for it. There is no Herdr window in the container, so dori's tab names are skipped (it logs
+that and goes on).
 
 ## Build
 
@@ -57,16 +61,17 @@ cd ~/projects/<your-repo>
 dori up
 ```
 
-herdr panes are hosted by the herdr server inside the container, so you can attach from
-any number of exec sessions and they survive detach:
+The terminals are hosted by the hc core inside the container, so you can list and attach
+to them from any number of exec sessions, and they survive detach (ctrl+\ detaches):
 
 ```sh
-docker exec -it dori herdr
+docker exec -it dori hc ls
+docker exec -it dori hc attach <terminal>
 ```
 
 ## What survives a restart
 
-All volume state, because nothing lives in the container filesystem. Running panes
+All volume state, because nothing lives in the container filesystem. Running terminals
 do not survive a restart; run `dori up` again:
 
 - `~/.dori` — harness state, lanes, inbox (`dori-state`)
@@ -88,7 +93,7 @@ the docker data root tens of gigabytes.
 ## When a VM is the simpler choice
 
 A container adds a layer over the host with no benefit for a single Dori: a plain VM
-(or bare metal box) with bun, herdr, omo, gh and agent-messenger installed gives the
+(or bare metal box) with bun, herdr-core, omo, gh and agent-messenger installed gives the
 same layout, the same `dori up`, and one less abstraction when something breaks. Reach
 for the container when you want the recipe reproducible from a Dockerfile, want to run
 several Doris isolated on one host, or cannot hand out VMs.
@@ -96,7 +101,7 @@ several Doris isolated on one host, or cannot hand out VMs.
 ## Acceptance (what this recipe is tested against)
 
 - `docker compose build` succeeds.
-- `dori up` inside the container opens the lead/duty/loop panes, visible through
-  `docker exec -it dori herdr`.
+- `dori up` inside the container opens the lead, duty and loop terminals, listed by
+  `docker exec -it dori hc ls`.
 - A container restart keeps lanes, inbox and auth (all state is in volumes).
 - No credentials in the image or in any example file.
