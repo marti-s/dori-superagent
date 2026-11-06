@@ -27,7 +27,7 @@ const USAGE = `dori - a proactive multi-session harness on Herdr (hc) + omo
   dori backlog import <owner/repo> [--label dori] [--cwd DIR]   open labelled issues -> items
   dori review <owner/repo#N> [--model M]      fresh omo reviewer at the exact head -> receipt
   dori merge <owner/repo#N> [--dry-run]       CLEAR receipt at head + green checks -> squash merge
-  dori done <key>                             lead closes a READY lane
+  dori done <key> [--abandon --note WHY]      lead closes a READY lane, or abandons one that never reported READY
   dori status
 
 --text may be omitted to read the message from stdin.
@@ -40,7 +40,7 @@ type Args = { pos: string[]; flags: Map<string, string[]> };
 
 // Flags that never take a value. Every other flag takes the next argument verbatim, even one starting with "--", so a
 // relayed value such as `--from "$SENDER"` or `--text "$MSG"` can never turn into a flag like --to-shell (#66).
-const BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["once", "force", "dry-run", "to-shell"]);
+const BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["once", "force", "dry-run", "to-shell", "abandon"]);
 
 function parse(argv: readonly string[]): Args {
   const pos: string[] = [];
@@ -270,8 +270,13 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
       console.log(await mergeGate(d, need(x, "PR"), { dryRun: one(a, "dry-run") === "true" }));
       return 0;
     case "done":
-      await done(d, need(x, "lane key"));
-      console.log(`DONE ${x}`);
+      if (a.flags.has("abandon")) {
+        await done(d, need(x, "lane key"), { note: one(a, "note") ?? "" });
+        console.log(`DONE ${x} abandoned`);
+      } else {
+        await done(d, need(x, "lane key"));
+        console.log(`DONE ${x}`);
+      }
       return 0;
     case "status":
       status(d);

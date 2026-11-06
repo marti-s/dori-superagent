@@ -211,6 +211,51 @@ describe("duty loop", () => {
     expect(await dutyTick(d)).toContainEqual({ lane: "busy", action: "lost" });
     expect(lead.received.at(-1)).toContain("[LOST busy]");
   });
+
+  test("a lane whose hc terminal finished without READY is LOST, and its key can be started again", async () => {
+    const { w, d, lead, brief } = setup();
+    const first = await startLane(d, "wedged", brief, { workspace: "w1" });
+    w.panes.get(first.paneId)!.finished = true;
+    expect(await dutyTick(d)).toContainEqual({ lane: "wedged", action: "lost" });
+    expect(d.store.lane("wedged")!.status).toBe("lost");
+    expect(lead.received.at(-1)).toContain("[LOST wedged]");
+    const again = await startLane(d, "wedged", brief, { workspace: "w1" });
+    expect(again.paneId).not.toBe(first.paneId);
+    expect(d.store.lane("wedged")!.status).toBe("working");
+  });
+
+  test("starting a key whose finished lane the duty loop has not seen yet records it LOST first", async () => {
+    const { w, d, lead, brief } = setup();
+    const first = await startLane(d, "stale", brief, { workspace: "w1" });
+    await expect(startLane(d, "stale", brief, { workspace: "w1" })).rejects.toThrow(`lane stale is already open in ${first.paneId}`);
+    w.panes.get(first.paneId)!.finished = true;
+    const again = await startLane(d, "stale", brief, { workspace: "w1" });
+    expect(lead.received.some((m) => m.includes("[LOST stale]"))).toBe(true);
+    expect(d.store.lane("stale")!.paneId).toBe(again.paneId);
+  });
+
+  test("done --abandon closes a lane that never reported READY, with the reason kept; plain done still refuses", async () => {
+    const { w, d, brief } = setup();
+    const lane = await startLane(d, "stuck", brief, { workspace: "w1" });
+    w.panes.get(lane.paneId)!.status = "working";
+    await expect(done(d, "stuck")).rejects.toThrow("not ready: no final answer recorded (close it anyway with --abandon --note WHY)");
+    await expect(done(d, "stuck", { note: " " })).rejects.toThrow("--abandon needs a --note");
+    await done(d, "stuck", { note: "wedged since the morning" });
+    expect(w.panes.has(lane.paneId)).toBe(false);
+    const closed = d.store.lane("stuck")!;
+    expect(closed.status).toBe("done");
+    expect(closed.log.at(-1)!.text).toBe("abandoned without READY: wedged since the morning");
+    await expect(done(d, "stuck", { note: "again" })).rejects.toThrow("already done");
+  });
+
+  test("dori done --abandon --note abandons a finished lane from the CLI", async () => {
+    const { w, d, brief } = setup();
+    const lane = await startLane(d, "cli-stuck", brief, { workspace: "w1" });
+    w.panes.get(lane.paneId)!.finished = true;
+    expect(await main(["done", "cli-stuck", "--abandon", "--note", "terminal exited"], d)).toBe(0);
+    expect(d.store.lane("cli-stuck")!.log.at(-1)!.text).toBe("abandoned without READY: terminal exited");
+    expect(w.panes.has(lane.paneId)).toBe(true);
+  });
 });
 
 describe("review + merge gate", () => {

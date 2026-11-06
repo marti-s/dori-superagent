@@ -234,7 +234,13 @@ export async function startLane(
   const reserved = reservedKey(key);
   if (reserved) throw new Refusal(reserved);
   const existing = d.store.lane(key);
-  if (existing && existing.status !== "done" && existing.status !== "lost") throw new Refusal(`lane ${key} is already open in ${existing.paneId}`);
+  if (existing && existing.status !== "done" && existing.status !== "lost") {
+    // A lane whose terminal finished or vanished is lost, not open: record that, then start the key afresh.
+    if (existing.status === "ready" || await d.herdr.status(existing.paneId) !== "gone") {
+      throw new Refusal(`lane ${key} is already open in ${existing.paneId}`);
+    }
+    await markLost(d, existing);
+  }
   const cwd = resolve(opts.cwd ?? process.cwd());
   const briefPath = d.store.briefPath(key);
   const footer = prompt("lane-footer.md", { key, dori: d.doriCmd });
@@ -298,16 +304,33 @@ export async function ready(d: Deps, key: string, text: string, evidence: readon
   return sent;
 }
 
-export async function done(d: Deps, key: string): Promise<void> {
+/**
+ * Closes a lane. Without `abandon`, only a READY lane closes. With it, the lead closes a lane that will never report
+ * READY (wedged, finished or lost), stopping its terminal if one still runs; the reason is kept in the lane's log.
+ */
+export async function done(d: Deps, key: string, abandon?: { note: string }): Promise<void> {
   const lane = d.store.lane(key);
   if (!lane) throw new Refusal(`no lane ${key}`);
-  if (lane.status !== "ready") throw new Refusal(`lane ${key} is ${lane.status}, not ready: no final answer recorded`);
+  if (abandon) {
+    if (!abandon.note.trim()) throw new Refusal("--abandon needs a --note saying why");
+    if (lane.status === "done") throw new Refusal(`lane ${key} is already done`);
+  } else if (lane.status !== "ready") {
+    throw new Refusal(`lane ${key} is ${lane.status}, not ready: no final answer recorded (close it anyway with --abandon --note WHY)`);
+  }
   const st = await d.herdr.status(lane.paneId);
-  if (st === "working" || st === "blocked") throw new Refusal(`lane ${key} pane is ${st}; let it finish first`);
+  if (!abandon && (st === "working" || st === "blocked")) throw new Refusal(`lane ${key} pane is ${st}; let it finish first`);
   if (st !== "gone") await d.herdr.close(lane.paneId);
   lane.status = "done";
-  lane.log.push({ at: d.now(), kind: "done", text: "closed by lead" });
+  lane.log.push({ at: d.now(), kind: "done", text: abandon ? `abandoned without READY: ${abandon.note}` : "closed by lead" });
   d.store.saveLane(lane);
+}
+
+/** A lane whose terminal finished or vanished without READY: recorded as lost and reported to the lead as [LOST]. */
+async function markLost(d: Deps, lane: Lane): Promise<void> {
+  lane.status = "lost";
+  lane.log.push({ at: d.now(), kind: "lost", text: "terminal finished or disappeared without READY" });
+  d.store.saveLane(lane);
+  await tellLead(d, `[LOST ${lane.key}] terminal ${lane.paneId} finished or closed without a final answer`, "duty");
 }
 
 // ---------- duty loop ----------
@@ -351,10 +374,7 @@ export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
       const st = await d.herdr.status(lane.paneId);
       const now = d.now();
       if (st === "gone") {
-        lane.status = "lost";
-        lane.log.push({ at: now, kind: "lost", text: "pane disappeared without READY" });
-        d.store.saveLane(lane);
-        await tellLead(d, `[LOST ${lane.key}] pane ${lane.paneId} closed without a final answer`, "duty");
+        await markLost(d, lane);
         events.push({ lane: lane.key, action: "lost" });
         continue;
       }

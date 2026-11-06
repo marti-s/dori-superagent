@@ -15,7 +15,7 @@ test.each([
   ["question", "live", "Question\nAllow this command? [y/n]", "blocked"],
   ["selection", "live", "enter to select · esc to cancel", "blocked"],
   ["unrecognized screen", "live", "loading...", "unknown"],
-  ["finished terminal", "exited", idleScreen, "done"],
+  ["finished terminal", "exited", idleScreen, "gone"],
 ] as const)("core status derives %s", async (_name, state, screen, expected) => {
   const fake = new FakeCore();
   Object.assign(fake.add(), { state, screen });

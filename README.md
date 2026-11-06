@@ -69,7 +69,7 @@ State is JSON on disk under `~/.dori` (or `$DORI_HOME`): `lanes/`, `inbox/`, `br
 
 ![lane lifecycle](docs/lane-flow.png)
 
-`dori start <key> --brief FILE` writes the brief plus the lane rules to `~/.dori/briefs/<key>.md`, opens a tab, runs `omo 'Read your brief at <path> and execute it. Your lane key is <key>.'`, records the lane as `working`, and sends the lead `[START <key>]`. From there the lane reports (`[REPORT <key>]`, or `[REPORT <key> WAITING]` when it is blocked outside its own pane) and ends with `[READY <key>]` plus its evidence links. The lead checks the evidence, runs `dori review` and `dori merge` when there is a PR, and closes the lane with `dori done <key>`. A lane that stays idle gets a nudge at 10 and 20 minutes and is escalated to the lead at 40 (`[ESCALATE <key>]`). A lane whose pane disappears before READY is reported as `[LOST <key>]`.
+`dori start <key> --brief FILE` writes the brief plus the lane rules to `~/.dori/briefs/<key>.md`, opens a tab, runs `omo 'Read your brief at <path> and execute it. Your lane key is <key>.'`, records the lane as `working`, and sends the lead `[START <key>]`. From there the lane reports (`[REPORT <key>]`, or `[REPORT <key> WAITING]` when it is blocked outside its own pane) and ends with `[READY <key>]` plus its evidence links. The lead checks the evidence, runs `dori review` and `dori merge` when there is a PR, and closes the lane with `dori done <key>`. A lane that stays idle gets a nudge at 10 and 20 minutes and is escalated to the lead at 40 (`[ESCALATE <key>]`). A lane whose hc terminal finishes or disappears before READY is reported as `[LOST <key>]`, and its key can be started again. A lane that will never report READY is closed with `dori done <key> --abandon --note WHY`, which stops its terminal if it still runs and keeps the reason in the lane's log.
 
 ## Mapping to DeepSeek's super-agent
 
@@ -129,7 +129,8 @@ The lead, on `[READY fix-flaky-login]`:
 dori review owner/repo#12            # fresh omo reviewer pinned to the head SHA; writes a receipt; exit 0 on CLEAR
 dori merge owner/repo#12 --dry-run   # MERGE_OK ... (dry run), or MERGE_REFUSED <why> with exit 2
 dori merge owner/repo#12             # gh pr merge --squash --match-head-commit <sha>
-dori done fix-flaky-login            # closes the lane's pane; only a READY lane can be closed
+dori done fix-flaky-login            # closes the lane's terminal; only a READY lane can be closed
+dori done fix-flaky-login --abandon --note 'wedged, restarted as fix-flaky-login-2'   # closes one that never reported READY
 ```
 
 `dori send <lead|duty|key|pane> --text '...'` delivers a message to a pane, or queues it when the pane is busy. `dori role <lead|duty> [PANE]` registers a terminal by hand when you did not use `dori up` (default: `HC_TERMINAL_ID`, the hc terminal it runs in). A target is a role, an open lane key, or an hc terminal address such as `t5`. `--text` can be left off to read the message from stdin. The commands the agents see are rendered with the full path to `src/cli.ts` and `DORI_HOME` set, so `dori` does not need to be on their PATH. Environment: `DORI_HOME` (state directory, default `~/.dori`), `DORI_AGENT_CMD` (default `omo`), `DORI_HERDR_APP` (path to `herdr-app`, default `~/.local/bin/herdr-app`), `DORI_HERDR_SPACE` (see below), `DORI_CMD` (how the agents are told to call dori).
@@ -158,7 +159,7 @@ Core does not report omo's agent state, so dori reads its screen and foreground 
 
 One voice. The lead is the only session that talks to you (`prompts/lead.md`). The lane rules say every fact meant for the human goes to the lead (`prompts/lane-footer.md`, rule 3), and the duty session never merges and never talks to the human (`prompts/duty.md`). Everything a lane does reaches the lead pane as a prompt: `[START]`, `[REPORT]`, `[READY]`, `[LOST]`, `[ESCALATE]`.
 
-READY needs evidence. `dori ready` refuses without at least one `--evidence` link and without final answer text (`ready()` in `src/harness.ts`). The text and links are stored on the lane record as `final`, and `dori done` refuses any lane that is not `ready`, so no lane closes without a recorded answer.
+READY needs evidence. `dori ready` refuses without at least one `--evidence` link and without final answer text (`ready()` in `src/harness.ts`). The text and links are stored on the lane record as `final`, and `dori done` refuses any lane that is not `ready`, so no lane closes without a recorded answer, unless the lead abandons it with `--abandon --note WHY`, which records that reason instead.
 
 Busy panes are never interrupted. `dori send` reads the pane's state from hc first (see above). An `idle` agent gets the message now, as one `hc send` that pastes it and presses Enter; anything else has it queued in `~/.dori/inbox/`, and the command prints `QUEUED`. A pane with no running agent in front (the agent exited, or was suspended with Ctrl+Z, and left a shell in front) is never typed into, because text typed into a shell runs as a command: its messages stay queued, and the duty loop prints `inbox-held` until an agent is back in the pane. To type into a plain shell on purpose, the operator passes `--to-shell`: it applies to that one message only and never to queued ones. The duty loop delivers the queue when the pane goes idle, as a single message that starts with "N messages arrived while you were busy" (`send()` and `flushInbox()` in `src/harness.ts`). `dori done` waits the same way: it refuses to close a pane that herdr reports as working or blocked.
 

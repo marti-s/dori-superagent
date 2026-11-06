@@ -185,8 +185,8 @@ export class HerdrCore implements TerminalBackend {
 
   async status(paneId: string): Promise<AgentStatus> {
     const value = await this.get(paneId);
-    if (!value) return "gone";
-    if (value.state !== "live") return "done";
+    // A finished terminal's program has ended: nothing can reach it any more, so it is as gone as a missing one.
+    if (!value || value.state !== "live") return "gone";
     if (interactiveShellInFront({ foreground_processes: value.foreground ? [value.foreground] : [] })) return "shell";
     let screen: string;
     try {

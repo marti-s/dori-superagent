@@ -17,6 +17,8 @@ type Process = { name: string; argv: string[] };
 type Pane = {
   status: AgentStatus; received: string[]; ran: string[];
   screen?: string | undefined; readFails?: boolean; foreground?: string | Process | null | undefined; tab?: string;
+  /** The terminal's program has exited: hc still lists it, as `finished`. */
+  finished?: boolean;
 };
 
 const SCREENS: Partial<Record<AgentStatus, string>> = {
@@ -98,7 +100,7 @@ export class World {
         const n = (this.gets.get(id!) ?? 0) + 1;
         this.gets.set(id!, n);
         if (this.getHook.get(id!)?.(n) === "fail") return fail("connection lost");
-        return ok({ address: id, state: "live", foreground: this.foreground(pane), labels: {} });
+        return ok({ address: id, state: pane.finished ? "finished" : "live", foreground: pane.finished ? null : this.foreground(pane), labels: {} });
       }
       case "read":
         return pane.readFails ? fail("read failed") : ok({ text: pane.screen ?? SCREENS[pane.status] ?? "" });
