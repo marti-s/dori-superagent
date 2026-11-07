@@ -108,7 +108,7 @@ writeFileSync(${JSON.stringify(sentinel)}, "arbitrary executable ran");
 }
 
 type Fixture = Awaited<ReturnType<typeof sandbox>>;
-const dori = (fx: Fixture, args: string[]) => run([process.execPath, cli, ...args], fx.root, fx.env);
+const dori = (fx: Fixture, args: string[]) => run([process.execPath, cli, ...args], fx.source, fx.env);
 async function reviewed(fx: Fixture) {
   const pin = fx.env["FORMA_QUEUE_BOOTSTRAP"];
   delete fx.env["FORMA_QUEUE_BOOTSTRAP"];
@@ -154,6 +154,10 @@ const invalidSources: readonly [string, (fx: Fixture) => void | Promise<unknown>
   ["missing tuple with a relative prefixed adapter", (fx) => {
     delete fx.env["FORMA_QUEUE_BOOTSTRAP"];
     fx.env["DORI_LANDING_BACKEND"] = JSON.stringify(["/usr/bin/env", "python3", ".atomic/workflows/dori-landing.py"]);
+  }],
+  ["missing tuple with a normalized prefixed adapter", (fx) => {
+    delete fx.env["FORMA_QUEUE_BOOTSTRAP"];
+    fx.env["DORI_LANDING_BACKEND"] = JSON.stringify(["/usr/bin/env", "python3", ".atomic/workflows/./dori-landing.py"]);
   }],
   ["source HEAD differs from requested head", (fx) => {
     writeFileSync(join(fx.root, "head"), fx.base);
