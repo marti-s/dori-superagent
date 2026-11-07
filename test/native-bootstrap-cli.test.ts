@@ -141,6 +141,16 @@ const invalidSources: readonly [string, (fx: Fixture) => void | Promise<unknown>
   ["short tuple tree", (fx) => tuple(fx, { tree: fx.tree.slice(0, 12) }), { code: 1, reason: "FORMA_QUEUE_BOOTSTRAP must be JSON exactly" }],
   ["extra bootstrap field", (fx) => tuple(fx, { source: fx.source }), { code: 1, reason: "FORMA_QUEUE_BOOTSTRAP must be JSON exactly" }],
   ["missing bootstrap tuple", (fx) => { delete fx.env["FORMA_QUEUE_BOOTSTRAP"]; }],
+  ["missing tuple with absolute Python entry", (fx) => {
+    delete fx.env["FORMA_QUEUE_BOOTSTRAP"];
+    const python = Bun.which("python3");
+    if (!python) throw new Error("CLI sandbox requires python3");
+    fx.env["DORI_LANDING_BACKEND"] = JSON.stringify([python, fx.entry]);
+  }],
+  ["missing tuple with a prefixed adapter", (fx) => {
+    delete fx.env["FORMA_QUEUE_BOOTSTRAP"];
+    fx.env["DORI_LANDING_BACKEND"] = JSON.stringify(["/usr/bin/env", "python3", fx.entry]);
+  }],
   ["source HEAD differs from requested head", (fx) => {
     writeFileSync(join(fx.root, "head"), fx.base);
     tuple(fx, { head: fx.base });
