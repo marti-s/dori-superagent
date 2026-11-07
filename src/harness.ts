@@ -6,8 +6,11 @@ import { CommandError, DeliveryUncertain, shq, spawnExec, type AgentStatus, type
 import { KEY_RE, reservedKey, Store, type DeliveryAttempt, type HostLoad, type Lane, type QueuedMessage, type Role } from "./store.ts";
 import { Telemetry, type MergeOutcome, type Usage } from "./telemetry.ts";
 import { HerdrCore } from "./herdr-core.ts";
+import { attestBootstrap, parseFormaQueueBootstrap, type FormaQueueBootstrap } from "./native-bootstrap.ts";
+import { Refusal } from "./refusal.ts";
 
 export { KEY_RE, reservedKey };
+export { Refusal } from "./refusal.ts";
 
 export const NUDGE_MINUTES = [10, 20, 40] as const;
 const PROMPTS = join(import.meta.dir, "..", "prompts");
@@ -19,6 +22,7 @@ export type Deps = {
   readonly exec: Exec;
   /** Optional executable and literal arguments for the landing queue backend. */
   readonly landingBackend?: readonly string[];
+  readonly formaQueueBootstrap?: FormaQueueBootstrap;
   readonly now: () => number;
   readonly agentCmd: string;
   /** How long one reviewer run may take before it is killed and the review fails. */
@@ -32,12 +36,14 @@ export type Deps = {
 
 export const defaultDeps = (): Deps => {
   const landingBackend = landingBackendArgv(process.env["DORI_LANDING_BACKEND"]);
+  const formaQueueBootstrap = parseFormaQueueBootstrap(process.env["FORMA_QUEUE_BOOTSTRAP"]);
   const store = new Store();
   return {
     store,
     herdr: new HerdrCore(),
     exec: spawnExec,
     landingBackend,
+    formaQueueBootstrap,
     now: Date.now,
     agentCmd: process.env["DORI_AGENT_CMD"] ?? "omo",
     reviewTimeoutMs: reviewTimeoutMinutes(process.env["DORI_REVIEW_TIMEOUT_MIN"]) * 60_000,
@@ -47,8 +53,6 @@ export const defaultDeps = (): Deps => {
     usage: new Telemetry(store.root),
   };
 };
-
-export class Refusal extends Error {}
 
 function landingBackendArgv(raw: string | undefined): readonly string[] | undefined {
   if (raw === undefined) return undefined;
@@ -542,8 +546,9 @@ export async function review(d: Deps, prId: string, model?: string): Promise<{ v
 }
 
 type Check = { name: string; bucket: string };
+const NATIVE_QUEUE_REPO = "formaengine/forma-rs";
 
-/** Merge only when the exact current head has a CLEAR review receipt and every check passed. An empty check list is never green. */
+/** Require exact-head CLEAR; Forma delegates candidate verification to its trusted native queue, other repos require green checks. */
 export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean } = {}): Promise<string> {
   const pr = parsePr(prId);
   const sha = await headSha(d, pr);
@@ -552,15 +557,23 @@ export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean 
     if (!opts.dryRun) d.usage.record({ name: "dori.merge_decided", outcome: refused[0] });
     throw new Refusal(`MERGE_REFUSED ${refused[1]}`);
   }
+  if (pr.repo.toLowerCase() === NATIVE_QUEUE_REPO) {
+    if (!d.landingBackend) throw new Refusal("MERGE_REFUSED native landing requires an explicit trusted queue backend");
+    if (opts.dryRun) throw new Refusal("MERGE_REFUSED native dry-run is unavailable: candidate verification requires the native queue");
+  }
   if (opts.dryRun) return `MERGE_OK ${pr.id} head=${sha} (dry run)`;
   if (d.landingBackend) {
     if (await headSha(d, pr) !== sha) throw new Refusal("MERGE_REFUSED head moved during landing admission");
     if (!/^[a-f0-9]{40}$/i.test(sha)) throw new Refusal("MERGE_REFUSED landing backend requires a full head SHA");
-    const [command, ...argv] = d.landingBackend;
+    const backend = pr.repo.toLowerCase() === NATIVE_QUEUE_REPO && (d.formaQueueBootstrap || d.landingBackend[0] === "python3")
+      ? await attestBootstrap(d.exec, d.landingBackend, { pin: d.formaQueueBootstrap, repo: pr.repo, pr: pr.number, head: sha })
+      : d.landingBackend;
+    const [command, ...argv] = backend;
     if (!command) throw new Refusal("MERGE_REFUSED landing backend has no executable");
     const result = await d.exec(command, [...argv, "--repo", pr.repo, "--pr", String(pr.number), "--expected-head", sha]);
     if (result.timedOut || result.code !== 0) {
-      throw new Refusal(`MERGE_REFUSED landing backend ${result.timedOut ? "timed out" : `exited ${result.code}`}`);
+      const reason = result.stderr.trim().slice(-2000);
+      throw new Refusal(`MERGE_REFUSED landing backend ${result.timedOut ? "timed out" : `exited ${result.code}`}${reason ? `: ${reason}` : ""}`);
     }
     let receipt: unknown;
     try {
@@ -599,6 +612,7 @@ async function gateRefusal(d: Deps, pr: PrRef, sha: string): Promise<[MergeOutco
   const receipt = d.store.receipt(pr.id, sha);
   if (!receipt) return ["no_receipt", `no review receipt at head ${sha.slice(0, 12)} (run: dori review ${pr.id})`];
   if (receipt.verdict !== "CLEAR") return ["review_block", `review at ${sha.slice(0, 12)} is ${receipt.verdict}`];
+  if (pr.repo.toLowerCase() === NATIVE_QUEUE_REPO) return undefined;
   const checksRes = await d.exec("gh", ["pr", "checks", String(pr.number), "--repo", pr.repo, "--json", "name,bucket"]);
   const checks: Check[] = checksRes.stdout.trim().startsWith("[") ? JSON.parse(checksRes.stdout) : [];
   if (checks.length === 0) return ["no_checks", "no checks reported: an empty check list is never green"];

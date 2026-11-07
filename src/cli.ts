@@ -26,7 +26,8 @@ const USAGE = `dori - a proactive multi-session harness on Herdr (hc) + omo
   dori backlog list | decide <id> --text ANSWER | drop <id> [--text WHY]
   dori backlog import <owner/repo> [--label dori] [--cwd DIR]   open labelled issues -> items
   dori review <owner/repo#N> [--model M]      fresh omo reviewer at the exact head -> receipt
-  dori merge <owner/repo#N> [--dry-run]       CLEAR + green -> landing backend, or squash merge when unset
+  dori merge <owner/repo#N> [--dry-run]       exact-head CLEAR; Forma requires its native queue backend
+                                              other repos: green checks -> backend, or squash merge when unset
   dori done <key> [--abandon --note WHY]      lead closes a READY lane, or abandons one that never reported READY
   dori status
 
