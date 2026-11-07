@@ -56,6 +56,8 @@ args = dict(zip(sys.argv[1::2], sys.argv[2::2]))
 print(json.dumps({"status": "queued", "repo": args["--repo"], "pr": int(args["--pr"]), "expectedHead": args["--expected-head"]}))
 `);
   writeFileSync(join(dirname(script), "sibling.py"), 'VALUE = "trusted sibling"\n');
+  mkdirSync(join(source, "specs"));
+  writeFileSync(join(source, "specs/checker.py"), 'VALUE = "trusted checker"\n');
   await git(source, "init", "-b", "main");
   await git(source, "add", ".");
   await git(source, "-c", "user.name=Sandbox", "-c", "user.email=sandbox@example.invalid", "commit", "-qm", "source");
@@ -122,6 +124,9 @@ test.each([
   ["ignored Windows library", ".atomic/workflows/ignored/payload.pyd", "import artifact"],
   ["ignored import path", ".atomic/workflows/ignored/payload.pth", "import artifact"],
   ["ignored cache", ".atomic/workflows/__pycache__/sibling.cpython-311.pyc", "import artifact"],
+  ["specs ignored Python", "specs/ignored/payload.py", "import artifact"],
+  ["specs ignored bytecode", "specs/checker.pyc", "import artifact"],
+  ["specs ignored cache", "specs/__pycache__/checker.cpython-311.pyc", "import artifact"],
 ])("%s source payload refuses without executing it", async (_name, path, reason) => {
   const fx = await sandbox();
   const payload = join(fx.source, path);
@@ -131,6 +136,15 @@ test.each([
   await expect(mergeGate(fx.deps(), pr)).rejects.toThrow(reason);
   expect(fx.backendCalls).toEqual([]);
   expect(existsSync(payload)).toBe(true);
+});
+
+test("specs import root symlink refuses before interpreter execution", async () => {
+  const fx = await sandbox();
+  mkdirSync(join(fx.source, "specs/ignored"));
+  symlinkSync(fx.root, join(fx.source, "specs/ignored/escape"));
+  await expect(mergeGate(fx.deps(), pr)).rejects.toThrow("symlink");
+  expect(fx.backendCalls).toEqual([]);
+  expect(existsSync(fx.marker)).toBe(false);
 });
 
 test.each([

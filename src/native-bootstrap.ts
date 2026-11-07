@@ -86,7 +86,7 @@ export async function attestBootstrap(
       for (const entry of readdirSync(directory, { withFileTypes: true })) {
         const path = join(directory, entry.name);
         const name = relative(source, path);
-        // Reject all workflow symlinks: following even an internal link adds cycles/aliases to the import boundary.
+        // Following even an internal link adds cycles/aliases to the import boundary.
         if (entry.isSymbolicLink()) refuse(`source import root contains a symlink: ${name}`);
         if (entry.name === "__pycache__" || (!tracked.has(name) && /\.(py|pyc|pyo|so|pyd|pth)$/i.test(entry.name))) {
           refuse(`source import artifact is not trusted: ${name}`);
@@ -95,6 +95,12 @@ export async function attestBootstrap(
       }
     };
     inspect(workflow);
+    const specs = join(source, "specs");
+    const specsEntry = readdirSync(source, { withFileTypes: true }).find((entry) => entry.name === "specs");
+    if (specsEntry) {
+      if (specsEntry.isSymbolicLink()) refuse("source import root contains a symlink: specs");
+      inspect(specs);
+    }
   } catch (error) {
     if (error instanceof Refusal) throw error;
     if (!(error instanceof Error)) throw error;

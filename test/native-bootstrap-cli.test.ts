@@ -151,6 +151,10 @@ const invalidSources: readonly [string, (fx: Fixture) => void | Promise<unknown>
     delete fx.env["FORMA_QUEUE_BOOTSTRAP"];
     fx.env["DORI_LANDING_BACKEND"] = JSON.stringify(["/usr/bin/env", "python3", fx.entry]);
   }],
+  ["missing tuple with a relative prefixed adapter", (fx) => {
+    delete fx.env["FORMA_QUEUE_BOOTSTRAP"];
+    fx.env["DORI_LANDING_BACKEND"] = JSON.stringify(["/usr/bin/env", "python3", ".atomic/workflows/dori-landing.py"]);
+  }],
   ["source HEAD differs from requested head", (fx) => {
     writeFileSync(join(fx.root, "head"), fx.base);
     tuple(fx, { head: fx.base });
