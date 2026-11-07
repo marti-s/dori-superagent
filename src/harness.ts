@@ -17,6 +17,8 @@ export type Deps = {
   readonly store: Store;
   readonly herdr: TerminalBackend;
   readonly exec: Exec;
+  /** Optional executable and literal arguments for the landing queue backend. */
+  readonly landingBackend?: readonly string[];
   readonly now: () => number;
   readonly agentCmd: string;
   /** How long one reviewer run may take before it is killed and the review fails. */
@@ -29,11 +31,13 @@ export type Deps = {
 };
 
 export const defaultDeps = (): Deps => {
+  const landingBackend = landingBackendArgv(process.env["DORI_LANDING_BACKEND"]);
   const store = new Store();
   return {
     store,
     herdr: new HerdrCore(),
     exec: spawnExec,
+    landingBackend,
     now: Date.now,
     agentCmd: process.env["DORI_AGENT_CMD"] ?? "omo",
     reviewTimeoutMs: reviewTimeoutMinutes(process.env["DORI_REVIEW_TIMEOUT_MIN"]) * 60_000,
@@ -45,6 +49,23 @@ export const defaultDeps = (): Deps => {
 };
 
 export class Refusal extends Error {}
+
+function landingBackendArgv(raw: string | undefined): readonly string[] | undefined {
+  if (raw === undefined) return undefined;
+  const message = "DORI_LANDING_BACKEND must be a JSON nonempty array of nonempty strings";
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch (e) {
+    if (!(e instanceof SyntaxError)) throw e;
+    throw new Refusal(message);
+  }
+  if (!Array.isArray(value) || value.length === 0 ||
+      !value.every((arg: unknown) => typeof arg === "string" && arg.trim().length > 0)) {
+    throw new Refusal(message);
+  }
+  return value;
+}
 
 const REVIEW_TIMEOUT_MIN = 25;
 const TAB_CLOSE_MIN = 15;
@@ -482,21 +503,34 @@ export async function review(d: Deps, prId: string, model?: string): Promise<{ v
   const pr = parsePr(prId);
   const sha = await headSha(d, pr);
   const text = prompt("review.md", { pr: pr.id, repo: pr.repo, number: String(pr.number), sha });
-  const argv = ["-p", "--no-session", ...(model ? ["--model", model] : []), text];
   // A run without a VERDICT line is tried once more; its output is kept so the cause can be read.
   let found: { verdict: "CLEAR" | "BLOCK"; full: string } | undefined;
   for (let attempt = 1; attempt <= 2 && !found; attempt++) {
+    const directory = d.store.createReviewAttempt(pr.id, sha);
+    const session = join(directory, "session.jsonl");
+    const argv = ["-p", "--session", session, ...(model ? ["--model", model] : []), text];
+    const startedAt = d.now();
     const res = await d.exec(d.agentCmd, argv, { timeoutMs: d.reviewTimeoutMs });
+    const diagnostics = d.store.saveReviewAttempt(directory, {
+      pr: pr.id, sha, attempt, model: model ?? "default", session,
+      startedAt, finishedAt: d.now(), code: res.code, timedOut: res.timedOut ?? false,
+      stdout: res.stdout, stderr: res.stderr,
+    });
+    process.stderr.write(`dori: reviewer attempt ${attempt} diagnostics: ${diagnostics}\n`);
     const out = res.stdout.trim();
-    if (res.timedOut) {
-      const kept = out ? `; its output so far: ${d.store.saveReviewOutput(pr.id, sha, out)}` : "";
-      throw new Error(`reviewer timed out after ${d.reviewTimeoutMs / 60_000} min; no receipt written${kept}`);
-    }
-    if (res.code !== 0) throw new Error(`reviewer exited ${res.code}: ${res.stderr.trim()}`);
     const last = [...res.stdout.matchAll(/^VERDICT:\s*(CLEAR|BLOCK)\b/gm)].at(-1);
+    if (res.timedOut) {
+      // omo -p prints its whole answer only once the review is finished, and can then stay alive until the deadline
+      // (#302): a VERDICT already in that output is a finished review. A run killed before any verdict is not retried.
+      if (!last) {
+        const kept = out ? `; its output so far: ${d.store.saveReviewOutput(pr.id, sha, out)}` : "";
+        throw new Error(`reviewer timed out after ${d.reviewTimeoutMs / 60_000} min; no receipt written; diagnostics: ${diagnostics}${kept}`);
+      }
+      process.stderr.write(`dori: the reviewer of ${pr.id} printed its VERDICT but kept running until the ${d.reviewTimeoutMs / 60_000} min deadline; receipt written from that output\n`);
+    } else if (res.code !== 0) throw new Error(`reviewer exited ${res.code}: ${res.stderr.trim()}; diagnostics: ${diagnostics}`);
     if (last) found = { verdict: last[1] as "CLEAR" | "BLOCK", full: out };
     else if (attempt === 2) {
-      throw new Error(`reviewer printed no VERDICT line twice; no receipt written; its output: ${d.store.saveReviewOutput(pr.id, sha, out)}`);
+      throw new Error(`reviewer printed no VERDICT line twice; no receipt written; diagnostics: ${diagnostics}; its output: ${d.store.saveReviewOutput(pr.id, sha, out)}`);
     } else d.store.saveReviewOutput(pr.id, sha, out);
   }
   const { verdict, full } = found!;
@@ -519,6 +553,43 @@ export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean 
     throw new Refusal(`MERGE_REFUSED ${refused[1]}`);
   }
   if (opts.dryRun) return `MERGE_OK ${pr.id} head=${sha} (dry run)`;
+  if (d.landingBackend) {
+    if (await headSha(d, pr) !== sha) throw new Refusal("MERGE_REFUSED head moved during landing admission");
+    if (!/^[a-f0-9]{40}$/i.test(sha)) throw new Refusal("MERGE_REFUSED landing backend requires a full head SHA");
+    const [command, ...argv] = d.landingBackend;
+    if (!command) throw new Refusal("MERGE_REFUSED landing backend has no executable");
+    const result = await d.exec(command, [...argv, "--repo", pr.repo, "--pr", String(pr.number), "--expected-head", sha]);
+    if (result.timedOut || result.code !== 0) {
+      throw new Refusal(`MERGE_REFUSED landing backend ${result.timedOut ? "timed out" : `exited ${result.code}`}`);
+    }
+    let receipt: unknown;
+    try {
+      receipt = JSON.parse(result.stdout);
+    } catch (e) {
+      if (!(e instanceof SyntaxError)) throw e;
+      throw new Refusal("MERGE_REFUSED landing backend must return exactly one JSON object");
+    }
+    if (receipt === null || typeof receipt !== "object" || Array.isArray(receipt) ||
+        !("repo" in receipt) || receipt.repo !== pr.repo ||
+        !("pr" in receipt) || receipt.pr !== pr.number ||
+        !("expectedHead" in receipt) || receipt.expectedHead !== sha || !("status" in receipt)) {
+      throw new Refusal("MERGE_REFUSED landing backend receipt does not match request identity");
+    }
+    switch (receipt.status) {
+      case "queued":
+        return `QUEUED ${pr.id} head=${sha}`;
+      case "landed":
+        if (!("candidateHead" in receipt) || typeof receipt.candidateHead !== "string" || !/^[a-f0-9]{40}$/i.test(receipt.candidateHead) ||
+            !("candidateTree" in receipt) || typeof receipt.candidateTree !== "string" || !/^[a-f0-9]{40}$/i.test(receipt.candidateTree) ||
+            !("receipt" in receipt) || typeof receipt.receipt !== "string" || receipt.receipt.trim().length === 0) {
+          throw new Refusal("MERGE_REFUSED landing backend landed receipt requires candidateHead, candidateTree and queue evidence");
+        }
+        d.usage.record({ name: "dori.merge_decided", outcome: "merged" });
+        return `MERGED ${pr.id} head=${sha} candidateHead=${receipt.candidateHead} candidateTree=${receipt.candidateTree} receipt=${receipt.receipt}`;
+      default:
+        throw new Refusal("MERGE_REFUSED landing backend returned an unknown status");
+    }
+  }
   await gh(d, ["pr", "merge", String(pr.number), "--repo", pr.repo, "--squash", "--match-head-commit", sha]);
   d.usage.record({ name: "dori.merge_decided", outcome: "merged" });
   return `MERGED ${pr.id} head=${sha}`;

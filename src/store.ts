@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, existsSync, appendFileSync, readFileSync, writeFileSync, renameSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, existsSync, appendFileSync, readFileSync, writeFileSync, renameSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -182,7 +182,29 @@ export class Store {
     return join(this.root, "receipts", `${pr.replaceAll("/", "__").replace("#", "_")}@${sha}.${ext}`);
   }
 
-  /** Writes a reviewer's full output where its receipt goes (`<pr>@<sha>.md`), receipt or not, and returns the path. */
+  /** Reserve a fresh directory before launch so a reviewer can never resume another attempt. */
+  createReviewAttempt(pr: string, sha: string): string {
+    const root = this.receiptPath(pr, sha, "attempts");
+    mkdirSync(root, { recursive: true });
+    return mkdtempSync(join(root, "attempt-"));
+  }
+
+  saveReviewAttempt(directory: string, record: {
+    readonly pr: string; readonly sha: string; readonly attempt: number;
+    readonly model: string; readonly session: string;
+    readonly startedAt: number; readonly finishedAt: number;
+    readonly code: number; readonly timedOut: boolean;
+    readonly stdout: string; readonly stderr: string;
+  }): string {
+    const { stdout, stderr, ...metadata } = record;
+    writeFileSync(join(directory, "stdout"), stdout, { flag: "wx" });
+    writeFileSync(join(directory, "stderr"), stderr, { flag: "wx" });
+    const path = join(directory, "result.json");
+    writeFileSync(path, `${JSON.stringify(metadata, null, 2)}\n`, { flag: "wx" });
+    return path;
+  }
+
+  /** Writes the receipt's compatibility markdown; attempt diagnostics are retained separately. */
   saveReviewOutput(pr: string, sha: string, fullText: string): string {
     const review = this.receiptPath(pr, sha, "md");
     const tmp = `${review}.${process.pid}.tmp`;

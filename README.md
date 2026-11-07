@@ -167,6 +167,17 @@ Nudges at 10, 20 and 40 minutes. `NUDGE_MINUTES = [10, 20, 40]` in `src/harness.
 
 Merge needs a CLEAR receipt at the exact head and green checks. `dori merge` reads the PR's head SHA with `gh`, then requires a receipt for that SHA in `~/.dori/receipts/` with verdict `CLEAR`. Only `dori review` writes receipts. It runs a fresh non-interactive omo (`omo -p --no-session`, optionally `--model`) on `prompts/review.md` pinned to that SHA, and when the reviewer prints no `VERDICT:` line, it runs once more and then fails with no receipt. A reviewer run that takes longer than `DORI_REVIEW_TIMEOUT_MIN` minutes (default 25) is killed with its children, and the review fails with `reviewer timed out` and no receipt. The reviewer's full output is kept beside the receipt as `receipts/<pr>@<sha>.md`; a failed review keeps its output in that same file and names it in its error, and the receipt's `review` field and the `review=` part of the `REVIEW` line name that file, and its `summary` holds only the start and the end, at most 4000 characters. Then `gh pr checks` must return at least one check, every check must be `pass` or `skipping`, and at least one must be `pass`. An empty check list is refused with "an empty check list is never green". The merge itself is `gh pr merge --squash --match-head-commit <sha>`. A push after the review changes the head SHA, so the receipt no longer matches and the merge is refused (`review()` and `mergeGate()` in `src/harness.ts`).
 
+Set `DORI_LANDING_BACKEND` to opt into an external landing queue instead of the default `gh pr merge`:
+
+```sh
+export DORI_LANDING_BACKEND='["/absolute/path/to/landing-backend","submit"]'
+dori merge owner/repo#123
+```
+
+The environment value is parsed once at startup as a nonempty JSON array of nonempty strings. Dori executes the first element directly, with the remaining literal arguments followed by `--repo owner/repo --pr 123 --expected-head FULL_SHA`. It never runs this command through a shell. Admission still requires the exact-head CLEAR review and nonempty green checks; empty, all-skipped, red and pending checks refuse admission. After admission, Dori re-reads the head and refuses a moved head before invoking the backend. `--dry-run` checks admission and never invokes the backend.
+
+The backend must exit 0 and write exactly one JSON object to stdout, with request identity `(repo, pr, expectedHead)` matching the invocation. A queued response is `{"status":"queued","repo":"owner/repo","pr":123,"expectedHead":"FULL_SHA"}`. Dori prints `QUEUED owner/repo#123 head=FULL_SHA`; this does not count as a merge. A landed response has the same identity, `"status":"landed"`, a `candidateHead` and `candidateTree` of 40 hexadecimal characters each, and a nonblank string `receipt` locating existing queue evidence. The backend owns that evidence; Dori checks the response identity and fields without substituting local evidence or bypassing checks. Dori prints `MERGED` with the request head, candidate head, candidate tree and receipt locator only for a valid landed response. Nonzero exits, reported timeouts, malformed output, identity mismatches, unknown statuses and missing evidence fail. A configured backend never falls back to `gh pr merge`.
+
 ## Hourly loop
 
 `dori up` also starts `dori loop` in a fourth pane. Once an hour it checks the harness against reality and starts the next piece of work that needs nobody's decision, so the lead does not have to remember what comes next. The full design is in [`docs/hourly-loop.md`](docs/hourly-loop.md).
