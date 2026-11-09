@@ -567,7 +567,7 @@ export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean 
     if (!/^[a-f0-9]{40}$/i.test(sha)) throw new Refusal("MERGE_REFUSED landing backend requires a full head SHA");
     const backend = pr.repo.toLowerCase() === NATIVE_QUEUE_REPO && (d.formaQueueBootstrap ||
       d.landingBackend.some((arg) => /(^|\/)(python|pypy)(\d+(\.\d+)*)?$/i.test(arg)) ||
-      d.landingBackend.some((arg) => arg.toLowerCase().includes(".atomic/workflows/dori-landing.py")))
+      d.landingBackend.some((arg) => arg.toLowerCase().includes(".agents/workflows/dori-landing.py")))
       ? await attestBootstrap(d.exec, d.landingBackend, { pin: d.formaQueueBootstrap, repo: pr.repo, pr: pr.number, head: sha })
       : d.landingBackend;
     const [command, ...argv] = backend;

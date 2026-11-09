@@ -30,7 +30,7 @@ async function sandbox() {
   const source = join(root, "source");
   const bin = join(root, "bin");
   const home = join(root, "home");
-  const workflows = join(source, ".atomic/workflows");
+  const workflows = join(source, ".agents/workflows");
   const sentinel = join(root, "sibling-imported");
   const hostile = join(root, "hostile-imported");
   const execution = join(root, "python-execution.json");
@@ -153,11 +153,11 @@ const invalidSources: readonly [string, (fx: Fixture) => void | Promise<unknown>
   }],
   ["missing tuple with a relative prefixed adapter", (fx) => {
     delete fx.env["FORMA_QUEUE_BOOTSTRAP"];
-    fx.env["DORI_LANDING_BACKEND"] = JSON.stringify(["/usr/bin/env", "python3", ".atomic/workflows/dori-landing.py"]);
+    fx.env["DORI_LANDING_BACKEND"] = JSON.stringify(["/usr/bin/env", "python3", ".agents/workflows/dori-landing.py"]);
   }],
   ["missing tuple with a normalized prefixed adapter", (fx) => {
     delete fx.env["FORMA_QUEUE_BOOTSTRAP"];
-    fx.env["DORI_LANDING_BACKEND"] = JSON.stringify(["/usr/bin/env", "python3", ".atomic/workflows/./dori-landing.py"]);
+    fx.env["DORI_LANDING_BACKEND"] = JSON.stringify(["/usr/bin/env", "python3", ".agents/workflows/./dori-landing.py"]);
   }],
   ["source HEAD differs from requested head", (fx) => {
     writeFileSync(join(fx.root, "head"), fx.base);

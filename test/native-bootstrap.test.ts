@@ -38,7 +38,7 @@ async function sandbox() {
   roots.push(root);
   const source = join(root, "source");
   const remote = join(root, "origin.git");
-  const script = join(source, ".atomic/workflows/dori-landing.py");
+  const script = join(source, ".agents/workflows/dori-landing.py");
   const marker = join(root, "executed.json");
   mkdirSync(dirname(script), { recursive: true });
   writeFileSync(join(source, ".gitignore"), "*.pyc\n__pycache__/\nignored/\n");
@@ -117,13 +117,13 @@ test("an unpinned dirty main source refuses before imports", async () => {
 
 test.each([
   ["untracked", "notes.txt", "source is dirty"],
-  ["ignored Python", ".atomic/workflows/ignored/payload.py", "import artifact"],
-  ["ignored bytecode", ".atomic/workflows/sibling.pyc", "import artifact"],
-  ["ignored optimized bytecode", ".atomic/workflows/ignored/payload.pyo", "import artifact"],
-  ["ignored shared library", ".atomic/workflows/ignored/payload.so", "import artifact"],
-  ["ignored Windows library", ".atomic/workflows/ignored/payload.pyd", "import artifact"],
-  ["ignored import path", ".atomic/workflows/ignored/payload.pth", "import artifact"],
-  ["ignored cache", ".atomic/workflows/__pycache__/sibling.cpython-311.pyc", "import artifact"],
+  ["ignored Python", ".agents/workflows/ignored/payload.py", "import artifact"],
+  ["ignored bytecode", ".agents/workflows/sibling.pyc", "import artifact"],
+  ["ignored optimized bytecode", ".agents/workflows/ignored/payload.pyo", "import artifact"],
+  ["ignored shared library", ".agents/workflows/ignored/payload.so", "import artifact"],
+  ["ignored Windows library", ".agents/workflows/ignored/payload.pyd", "import artifact"],
+  ["ignored import path", ".agents/workflows/ignored/payload.pth", "import artifact"],
+  ["ignored cache", ".agents/workflows/__pycache__/sibling.cpython-311.pyc", "import artifact"],
   ["specs ignored Python", "specs/ignored/payload.py", "import artifact"],
   ["specs ignored bytecode", "specs/checker.pyc", "import artifact"],
   ["specs ignored cache", "specs/__pycache__/checker.cpython-311.pyc", "import artifact"],
@@ -205,7 +205,7 @@ test.each(["prefix", "alternate script", "relative script", "extra argument", "e
     const fx = await sandbox();
     const backend = shape === "prefix" ? ["env", "python3", fx.script]
       : shape === "alternate script" ? ["python3", join(dirname(fx.script), "sibling.py")]
-      : shape === "relative script" ? ["python3", ".atomic/workflows/dori-landing.py"]
+      : shape === "relative script" ? ["python3", ".agents/workflows/dori-landing.py"]
       : shape === "extra argument" ? ["python3", fx.script, "--verify"]
       : ["/arbitrary/python3", fx.script];
 
@@ -219,7 +219,7 @@ test.each(["", "null", "[]", "{}", "not json", '{"repo":"formaengine/forma-rs","
   (raw) => {
     const root = mkdtempSync(join(tmpdir(), "dori-bootstrap-config-"));
     roots.push(root);
-    expect(() => configured(root, ["python3", "/source/.atomic/workflows/dori-landing.py"], raw)).toThrow(Refusal);
+    expect(() => configured(root, ["python3", "/source/.agents/workflows/dori-landing.py"], raw)).toThrow(Refusal);
   },
 );
 
