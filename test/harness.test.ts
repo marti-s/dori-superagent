@@ -493,8 +493,16 @@ describe("review + merge gate", () => {
 
   test("configured landing refuses an empty --phase without invoking the backend", async () => {
     const { w, d } = landingSetup();
-    await expect(mergeGate(d, "o/r#7", { phase: " " })).rejects.toThrow("--phase");
-    expect(w.calls.filter((c) => c.cmd === d.landingBackend[0] || c.argv[1] === "merge")).toEqual([]);
+    for (const dryRun of [false, true]) {
+      await expect(mergeGate(d, "o/r#7", { phase: " ", dryRun })).rejects.toThrow("--phase");
+    }
+    expect(w.calls).toEqual([]);
+  });
+
+  test("a bare --phase with no value refuses before any command", async () => {
+    const { w, d } = landingSetup();
+    await expect(main(["merge", "o/r#7", "--phase"], d)).rejects.toThrow("--phase needs a value");
+    expect(w.calls).toEqual([]);
   });
 
   test("configured landing dry run keeps admission without invoking the backend", async () => {

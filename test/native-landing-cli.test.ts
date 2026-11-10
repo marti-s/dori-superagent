@@ -223,7 +223,7 @@ describe("native formaengine/forma-rs landing", () => {
   });
 });
 
-describe("generic o/r landing is unchanged", () => {
+describe("generic o/r landing keeps the GitHub check policy and gets the default phase", () => {
   test("empty checks still refuse even though the head is CLEAR", async () => {
     const fx = sandbox();
     await reviewed(fx, GENERIC);

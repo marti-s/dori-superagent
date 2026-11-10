@@ -51,7 +51,8 @@ function parse(argv: readonly string[]): Args {
     if (!a.startsWith("--")) { pos.push(a); continue; }
     const name = a.slice(2);
     const next = argv[i + 1];
-    const value = BOOLEAN_FLAGS.has(name) || next === undefined ? "true" : (i++, next);
+    if (!BOOLEAN_FLAGS.has(name) && next === undefined) throw new Refusal(`--${name} needs a value`);
+    const value = BOOLEAN_FLAGS.has(name) ? "true" : (i++, next!);
     flags.set(name, [...(flags.get(name) ?? []), value]);
   }
   return { pos, flags };

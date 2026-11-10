@@ -551,6 +551,8 @@ const NATIVE_QUEUE_REPO = "formaengine/forma-rs";
 /** Require exact-head CLEAR; Forma delegates candidate verification to its trusted native queue, other repos require green checks. */
 export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean; phase?: string } = {}): Promise<string> {
   const pr = parsePr(prId);
+  const phase = opts.phase ?? `dori-pr${pr.number}`;
+  if (!phase.trim()) throw new Refusal("MERGE_REFUSED landing admission needs a nonempty --phase NAME");
   const sha = await headSha(d, pr);
   const refused = await gateRefusal(d, pr, sha);
   if (refused) {
@@ -570,8 +572,6 @@ export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean;
       d.landingBackend.some((arg) => arg.toLowerCase().includes(".agents/workflows/dori-landing.py")))
       ? await attestBootstrap(d.exec, d.landingBackend, { pin: d.formaQueueBootstrap, repo: pr.repo, pr: pr.number, head: sha })
       : d.landingBackend;
-    const phase = opts.phase ?? `dori-pr${pr.number}`;
-    if (!phase.trim()) throw new Refusal("MERGE_REFUSED landing admission needs a nonempty --phase NAME");
     const [command, ...argv] = backend;
     if (!command) throw new Refusal("MERGE_REFUSED landing backend has no executable");
     const result = await d.exec(command, [...argv, "--repo", pr.repo, "--pr", String(pr.number), "--expected-head", sha, "--phase", phase]);
