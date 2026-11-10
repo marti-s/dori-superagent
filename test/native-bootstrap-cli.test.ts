@@ -76,6 +76,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--repo", required=True)
 parser.add_argument("--pr", required=True, type=int)
 parser.add_argument("--expected-head", required=True)
+parser.add_argument("--phase", required=True)
 args = parser.parse_args()
 print(json.dumps({"repo": args.repo, "pr": args.pr, "expectedHead": args.expected_head, "status": "queued"}))
 `);

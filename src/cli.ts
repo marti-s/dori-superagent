@@ -26,7 +26,7 @@ const USAGE = `dori - a proactive multi-session harness on Herdr (hc) + omo
   dori backlog list | decide <id> --text ANSWER | drop <id> [--text WHY]
   dori backlog import <owner/repo> [--label dori] [--cwd DIR]   open labelled issues -> items
   dori review <owner/repo#N> [--model M]      fresh omo reviewer at the exact head -> receipt
-  dori merge <owner/repo#N> [--dry-run]       exact-head CLEAR; Forma requires its native queue backend
+  dori merge <owner/repo#N> [--dry-run] [--phase NAME]   exact-head CLEAR; Forma requires its native queue backend
                                               other repos: green checks -> backend, or squash merge when unset
   dori done <key> [--abandon --note WHY]      lead closes a READY lane, or abandons one that never reported READY
   dori status
@@ -42,6 +42,8 @@ type Args = { pos: string[]; flags: Map<string, string[]> };
 // Flags that never take a value. Every other flag takes the next argument verbatim, even one starting with "--", so a
 // relayed value such as `--from "$SENDER"` or `--text "$MSG"` can never turn into a flag like --to-shell (#66).
 const BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["once", "force", "dry-run", "to-shell", "abandon"]);
+// Flags that refuse when given last with no value, instead of reading as "true". A bare --phase must never admit a phase.
+const VALUE_REQUIRED_FLAGS: ReadonlySet<string> = new Set(["phase"]);
 
 function parse(argv: readonly string[]): Args {
   const pos: string[] = [];
@@ -51,6 +53,7 @@ function parse(argv: readonly string[]): Args {
     if (!a.startsWith("--")) { pos.push(a); continue; }
     const name = a.slice(2);
     const next = argv[i + 1];
+    if (VALUE_REQUIRED_FLAGS.has(name) && next === undefined) throw new Refusal(`--${name} needs a value`);
     const value = BOOLEAN_FLAGS.has(name) || next === undefined ? "true" : (i++, next);
     flags.set(name, [...(flags.get(name) ?? []), value]);
   }
@@ -269,7 +272,7 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
       return r.verdict === "CLEAR" ? 0 : 1;
     }
     case "merge":
-      console.log(await mergeGate(d, need(x, "PR"), { dryRun: one(a, "dry-run") === "true" }));
+      console.log(await mergeGate(d, need(x, "PR"), { dryRun: one(a, "dry-run") === "true", phase: one(a, "phase") }));
       return 0;
     case "done":
       if (a.flags.has("abandon")) {

@@ -549,8 +549,12 @@ type Check = { name: string; bucket: string };
 const NATIVE_QUEUE_REPO = "formaengine/forma-rs";
 
 /** Require exact-head CLEAR; Forma delegates candidate verification to its trusted native queue, other repos require green checks. */
-export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean } = {}): Promise<string> {
+export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean; phase?: string } = {}): Promise<string> {
   const pr = parsePr(prId);
+  const phase = opts.phase ?? `dori-pr${pr.number}`;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(phase)) {
+    throw new Refusal(`MERGE_REFUSED landing admission needs --phase NAME of letters, digits, ".", "_" or "-", starting with a letter or digit; got ${JSON.stringify(phase)}`);
+  }
   const sha = await headSha(d, pr);
   const refused = await gateRefusal(d, pr, sha);
   if (refused) {
@@ -572,7 +576,7 @@ export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean 
       : d.landingBackend;
     const [command, ...argv] = backend;
     if (!command) throw new Refusal("MERGE_REFUSED landing backend has no executable");
-    const result = await d.exec(command, [...argv, "--repo", pr.repo, "--pr", String(pr.number), "--expected-head", sha]);
+    const result = await d.exec(command, [...argv, "--repo", pr.repo, "--pr", String(pr.number), "--expected-head", sha, "--phase", phase]);
     if (result.timedOut || result.code !== 0) {
       const reason = result.stderr.trim().slice(-2000);
       throw new Refusal(`MERGE_REFUSED landing backend ${result.timedOut ? "timed out" : `exited ${result.code}`}${reason ? `: ${reason}` : ""}`);
