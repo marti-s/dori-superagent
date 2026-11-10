@@ -41,7 +41,7 @@ test.each([
 
   expect(await mergeGate(d, pr)).toBe(`QUEUED ${pr} head=${head}`);
   expect(w.calls.filter((c) => c.cmd !== "gh")).toEqual([{
-    cmd: backend, argv: ["--repo", repo, "--pr", "7", "--expected-head", head],
+    cmd: backend, argv: ["--repo", repo, "--pr", "7", "--expected-head", head, "--phase", "dori-pr7"],
   }]);
   expect(w.calls.some((c) => c.cmd === "gh" && c.argv[1] !== "view")).toBe(false);
   expect(w.usage).toEqual([]);

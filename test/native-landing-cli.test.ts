@@ -103,7 +103,7 @@ describe("native formaengine/forma-rs landing", () => {
     const r = await dori(fx, ["merge", `${NATIVE}#7`], { backend: true });
 
     expect(r).toEqual({ code: 0, stdout: `QUEUED ${NATIVE}#7 head=${head}\n`, stderr: "" });
-    expect(backendCalls(fx)).toEqual([["--repo", NATIVE, "--pr", "7", "--expected-head", head]]);
+    expect(backendCalls(fx)).toEqual([["--repo", NATIVE, "--pr", "7", "--expected-head", head, "--phase", "dori-pr7"]]);
     expect(merges(fx)).toEqual([]);
   });
 
@@ -246,7 +246,7 @@ describe("generic o/r landing is unchanged", () => {
     const r = await dori(fx, ["merge", `${GENERIC}#7`], { backend: true });
 
     expect(r.stdout).toBe(`QUEUED ${GENERIC}#7 head=${head}\n`);
-    expect(backendCalls(fx)).toEqual([["--repo", GENERIC, "--pr", "7", "--expected-head", head]]);
+    expect(backendCalls(fx)).toEqual([["--repo", GENERIC, "--pr", "7", "--expected-head", head, "--phase", "dori-pr7"]]);
     expect(merges(fx)).toEqual([]);
   });
 

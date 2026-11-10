@@ -409,7 +409,7 @@ describe("review + merge gate", () => {
       : `MERGED o/r#7 head=${head} candidateHead=${landed.candidateHead} candidateTree=${landed.candidateTree} receipt=${landed.receipt}`]);
     expect(w.calls.filter((c) => c.cmd === d.landingBackend[0])).toEqual([{
       cmd: "/backend with spaces",
-      argv: ["submit", "$(touch nope); literal", "--repo", "o/r", "--pr", "7", "--expected-head", head],
+      argv: ["submit", "$(touch nope); literal", "--repo", "o/r", "--pr", "7", "--expected-head", head, "--phase", "dori-pr7"],
     }]);
     expect(w.calls.some((c) => c.cmd === "gh" && c.argv[1] === "merge")).toBe(false);
     expect(w.usage.filter((e) => e.name === "dori.merge_decided")).toEqual(
@@ -474,6 +474,26 @@ describe("review + merge gate", () => {
       : admitted(argv);
     await expect(mergeGate(d, "o/r#7")).rejects.toThrow("head moved");
     expect(reads).toBe(2);
+    expect(w.calls.filter((c) => c.cmd === d.landingBackend[0] || c.argv[1] === "merge")).toEqual([]);
+  });
+
+  test("configured landing passes the lead's explicit --phase to the backend", async () => {
+    const { w, d } = landingSetup();
+    w.reviewer = () => ({ code: 0, stdout: JSON.stringify({ status: "queued", repo: "o/r", pr: 7, expectedHead: head }) });
+    const log = console.log;
+    console.log = () => {};
+    try {
+      expect(await main(["merge", "o/r#7", "--phase", "lane-s2"], d)).toBe(0);
+    } finally {
+      console.log = log;
+    }
+    const calls = w.calls.filter((c) => c.cmd === d.landingBackend[0]);
+    expect(calls.map((c) => c.argv.slice(-2))).toEqual([["--phase", "lane-s2"]]);
+  });
+
+  test("configured landing refuses an empty --phase without invoking the backend", async () => {
+    const { w, d } = landingSetup();
+    await expect(mergeGate(d, "o/r#7", { phase: " " })).rejects.toThrow("--phase");
     expect(w.calls.filter((c) => c.cmd === d.landingBackend[0] || c.argv[1] === "merge")).toEqual([]);
   });
 
