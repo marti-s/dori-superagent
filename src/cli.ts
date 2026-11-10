@@ -42,6 +42,8 @@ type Args = { pos: string[]; flags: Map<string, string[]> };
 // Flags that never take a value. Every other flag takes the next argument verbatim, even one starting with "--", so a
 // relayed value such as `--from "$SENDER"` or `--text "$MSG"` can never turn into a flag like --to-shell (#66).
 const BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["once", "force", "dry-run", "to-shell", "abandon"]);
+// Flags that refuse when given last with no value, instead of reading as "true". A bare --phase must never admit a phase.
+const VALUE_REQUIRED_FLAGS: ReadonlySet<string> = new Set(["phase"]);
 
 function parse(argv: readonly string[]): Args {
   const pos: string[] = [];
@@ -51,8 +53,8 @@ function parse(argv: readonly string[]): Args {
     if (!a.startsWith("--")) { pos.push(a); continue; }
     const name = a.slice(2);
     const next = argv[i + 1];
-    if (!BOOLEAN_FLAGS.has(name) && next === undefined) throw new Refusal(`--${name} needs a value`);
-    const value = BOOLEAN_FLAGS.has(name) ? "true" : (i++, next!);
+    if (VALUE_REQUIRED_FLAGS.has(name) && next === undefined) throw new Refusal(`--${name} needs a value`);
+    const value = BOOLEAN_FLAGS.has(name) || next === undefined ? "true" : (i++, next);
     flags.set(name, [...(flags.get(name) ?? []), value]);
   }
   return { pos, flags };

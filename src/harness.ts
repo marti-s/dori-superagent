@@ -552,7 +552,9 @@ const NATIVE_QUEUE_REPO = "formaengine/forma-rs";
 export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean; phase?: string } = {}): Promise<string> {
   const pr = parsePr(prId);
   const phase = opts.phase ?? `dori-pr${pr.number}`;
-  if (!phase.trim()) throw new Refusal("MERGE_REFUSED landing admission needs a nonempty --phase NAME");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(phase)) {
+    throw new Refusal(`MERGE_REFUSED landing admission needs --phase NAME of letters, digits, ".", "_" or "-", starting with a letter or digit; got ${JSON.stringify(phase)}`);
+  }
   const sha = await headSha(d, pr);
   const refused = await gateRefusal(d, pr, sha);
   if (refused) {

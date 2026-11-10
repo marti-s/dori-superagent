@@ -491,10 +491,12 @@ describe("review + merge gate", () => {
     expect(calls.map((c) => c.argv.slice(-2))).toEqual([["--phase", "lane-s2"]]);
   });
 
-  test("configured landing refuses an empty --phase without invoking the backend", async () => {
+  test("configured landing refuses a blank or malformed --phase without any command", async () => {
     const { w, d } = landingSetup();
-    for (const dryRun of [false, true]) {
-      await expect(mergeGate(d, "o/r#7", { phase: " ", dryRun })).rejects.toThrow("--phase");
+    for (const phase of ["", " ", " lane-s2 ", "-x", "a b"]) {
+      for (const dryRun of [false, true]) {
+        await expect(mergeGate(d, "o/r#7", { phase, dryRun })).rejects.toThrow("--phase");
+      }
     }
     expect(w.calls).toEqual([]);
   });
@@ -503,6 +505,17 @@ describe("review + merge gate", () => {
     const { w, d } = landingSetup();
     await expect(main(["merge", "o/r#7", "--phase"], d)).rejects.toThrow("--phase needs a value");
     expect(w.calls).toEqual([]);
+  });
+
+  test("other flags given last still read as true, so --help keeps printing usage", async () => {
+    const { d } = landingSetup();
+    const log = console.log;
+    console.log = () => {};
+    try {
+      expect(await main(["--help"], d)).toBe(0);
+    } finally {
+      console.log = log;
+    }
   });
 
   test("configured landing dry run keeps admission without invoking the backend", async () => {
