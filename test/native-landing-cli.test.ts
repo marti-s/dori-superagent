@@ -71,7 +71,7 @@ async function dori(fx: Fixture, args: string[], opts: { backend?: boolean } = {
     PATH: fx.bin, HOME: fx.root, DORI_HOME: fx.home, DORI_TELEMETRY: "0",
     DORI_AGENT_CMD: join(fx.bin, "agent"), DORI_REVIEW_TIMEOUT_MIN: "1",
   };
-  if (opts.backend) env["DORI_LANDING_BACKEND"] = JSON.stringify([join(fx.bin, "backend")]);
+  if (opts.backend) env["LANDING_BACKEND"] = JSON.stringify([join(fx.bin, "backend")]);
   const child = Bun.spawn([process.execPath, cli, ...args], {
     env, stdin: "ignore", stdout: "pipe", stderr: "pipe", timeout: 30_000,
   });

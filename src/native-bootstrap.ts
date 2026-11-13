@@ -11,7 +11,7 @@ export type FormaQueueBootstrap = {
 };
 
 const SHA = /^[a-f0-9]{40}$/i;
-const ADAPTER = ".agents/workflows/dori-landing.py";
+const ADAPTER = ".agents/workflows/landing-verifier.py";
 
 /** Explicit configuration is parsed once by defaultDeps, never read from ambient env during admission. */
 export function parseFormaQueueBootstrap(raw: string | undefined): FormaQueueBootstrap | undefined {
@@ -48,7 +48,7 @@ export async function attestBootstrap(
   // python3 comes from the trusted caller's PATH. A configured executable cannot substitute another entrypoint.
   if (command !== "python3" || backend.length !== 2 || !script || !isAbsolute(script) ||
       resolve(script) !== script || !script.endsWith(`/${ADAPTER}`)) {
-    throw new Refusal("MERGE_REFUSED bootstrap backend must be exactly [\"python3\", \"/absolute/source/.agents/workflows/dori-landing.py\"]");
+    throw new Refusal("MERGE_REFUSED bootstrap backend must be exactly [\"python3\", \"/absolute/source/.agents/workflows/landing-verifier.py\"]");
   }
   const source = dirname(dirname(dirname(script)));
   const workflow = dirname(script);

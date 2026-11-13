@@ -24,7 +24,7 @@ function configured(root: string, backend: readonly string[], pin: string | unde
   try {
     process.env.DORI_HOME = join(root, "home");
     process.env.DORI_TELEMETRY = "0";
-    process.env.DORI_LANDING_BACKEND = JSON.stringify(backend);
+    process.env.LANDING_BACKEND = JSON.stringify(backend);
     if (pin === undefined) delete process.env.FORMA_QUEUE_BOOTSTRAP;
     else process.env.FORMA_QUEUE_BOOTSTRAP = pin;
     return defaultDeps();
@@ -38,7 +38,7 @@ async function sandbox() {
   roots.push(root);
   const source = join(root, "source");
   const remote = join(root, "origin.git");
-  const script = join(source, ".agents/workflows/dori-landing.py");
+  const script = join(source, ".agents/workflows/landing-verifier.py");
   const marker = join(root, "executed.json");
   mkdirSync(dirname(script), { recursive: true });
   writeFileSync(join(source, ".gitignore"), "*.pyc\n__pycache__/\nignored/\n");
@@ -205,7 +205,7 @@ test.each(["prefix", "alternate script", "relative script", "extra argument", "e
     const fx = await sandbox();
     const backend = shape === "prefix" ? ["env", "python3", fx.script]
       : shape === "alternate script" ? ["python3", join(dirname(fx.script), "sibling.py")]
-      : shape === "relative script" ? ["python3", ".agents/workflows/dori-landing.py"]
+      : shape === "relative script" ? ["python3", ".agents/workflows/landing-verifier.py"]
       : shape === "extra argument" ? ["python3", fx.script, "--verify"]
       : ["/arbitrary/python3", fx.script];
 
@@ -219,7 +219,7 @@ test.each(["", "null", "[]", "{}", "not json", '{"repo":"formaengine/forma-rs","
   (raw) => {
     const root = mkdtempSync(join(tmpdir(), "dori-bootstrap-config-"));
     roots.push(root);
-    expect(() => configured(root, ["python3", "/source/.agents/workflows/dori-landing.py"], raw)).toThrow(Refusal);
+    expect(() => configured(root, ["python3", "/source/.agents/workflows/landing-verifier.py"], raw)).toThrow(Refusal);
   },
 );
 
