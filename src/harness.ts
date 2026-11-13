@@ -548,7 +548,7 @@ export async function review(d: Deps, prId: string, model?: string): Promise<{ v
 type Check = { name: string; bucket: string };
 const NATIVE_QUEUE_REPO = "formaengine/forma-rs";
 
-/** Require exact-head CLEAR; Forma delegates candidate verification to its trusted native queue, other repos require green checks. */
+/** Require exact-head CLEAR; Forma delegates landing verification to its trusted native queue, other repos require green checks. */
 export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean; phase?: string } = {}): Promise<string> {
   const pr = parsePr(prId);
   const phase = opts.phase ?? `dori-pr${pr.number}`;
@@ -563,7 +563,7 @@ export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean;
   }
   if (pr.repo.toLowerCase() === NATIVE_QUEUE_REPO) {
     if (!d.landingBackend) throw new Refusal("MERGE_REFUSED native landing requires an explicit trusted queue backend");
-    if (opts.dryRun) throw new Refusal("MERGE_REFUSED native dry-run is unavailable: candidate verification requires the native queue");
+    if (opts.dryRun) throw new Refusal("MERGE_REFUSED native dry-run is unavailable: landing verification requires the native queue");
   }
   if (opts.dryRun) return `MERGE_OK ${pr.id} head=${sha} (dry run)`;
   if (d.landingBackend) {
@@ -598,13 +598,13 @@ export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean;
       case "queued":
         return `QUEUED ${pr.id} head=${sha}`;
       case "landed":
-        if (!("candidateHead" in receipt) || typeof receipt.candidateHead !== "string" || !/^[a-f0-9]{40}$/i.test(receipt.candidateHead) ||
-            !("candidateTree" in receipt) || typeof receipt.candidateTree !== "string" || !/^[a-f0-9]{40}$/i.test(receipt.candidateTree) ||
+        if (!("landedHead" in receipt) || typeof receipt.landedHead !== "string" || !/^[a-f0-9]{40}$/i.test(receipt.landedHead) ||
+            !("landedTree" in receipt) || typeof receipt.landedTree !== "string" || !/^[a-f0-9]{40}$/i.test(receipt.landedTree) ||
             !("receipt" in receipt) || typeof receipt.receipt !== "string" || receipt.receipt.trim().length === 0) {
-          throw new Refusal("MERGE_REFUSED landing backend landed receipt requires candidateHead, candidateTree and queue evidence");
+          throw new Refusal("MERGE_REFUSED landing backend landed receipt requires landedHead, landedTree and queue evidence");
         }
         d.usage.record({ name: "dori.merge_decided", outcome: "merged" });
-        return `MERGED ${pr.id} head=${sha} candidateHead=${receipt.candidateHead} candidateTree=${receipt.candidateTree} receipt=${receipt.receipt}`;
+        return `MERGED ${pr.id} head=${sha} landedHead=${receipt.landedHead} landedTree=${receipt.landedTree} receipt=${receipt.receipt}`;
       default:
         throw new Refusal("MERGE_REFUSED landing backend returned an unknown status");
     }

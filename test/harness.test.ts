@@ -386,7 +386,7 @@ describe("review + merge gate", () => {
     d.store.saveReceipt({ pr: "o/r#7", sha: head, verdict: "CLEAR", model: "default", at: w.clock, summary: "clear" }, "VERDICT: CLEAR");
     const landed = {
       status: "landed", repo: "o/r", pr: 7, expectedHead: head,
-      candidateHead: "b".repeat(40), candidateTree: "c".repeat(40), receipt: "queue://landings/42",
+      landedHead: "b".repeat(40), landedTree: "c".repeat(40), receipt: "queue://landings/42",
     };
     return { w, d: { ...d, landingBackend: ["/backend with spaces", "submit", "$(touch nope); literal"] }, landed };
   }
@@ -406,7 +406,7 @@ describe("review + merge gate", () => {
     }
     expect(lines).toEqual([status === "queued"
       ? `QUEUED o/r#7 head=${head}`
-      : `MERGED o/r#7 head=${head} candidateHead=${landed.candidateHead} candidateTree=${landed.candidateTree} receipt=${landed.receipt}`]);
+      : `MERGED o/r#7 head=${head} landedHead=${landed.landedHead} landedTree=${landed.landedTree} receipt=${landed.receipt}`]);
     expect(w.calls.filter((c) => c.cmd === d.landingBackend[0])).toEqual([{
       cmd: "/backend with spaces",
       argv: ["submit", "$(touch nope); literal", "--repo", "o/r", "--pr", "7", "--expected-head", head, "--phase", "dori-pr7"],
@@ -446,10 +446,11 @@ describe("review + merge gate", () => {
     ["unrelated head", { expectedHead: "d".repeat(40) }],
     ["unknown status", { status: "merged" }],
     ["missing status", { status: undefined }],
-    ["missing candidate head", { candidateHead: undefined }],
-    ["short candidate head", { candidateHead: "abcd" }],
-    ["nonhex candidate tree", { candidateTree: "z".repeat(40) }],
-    ["missing candidate tree", { candidateTree: undefined }],
+    ["missing landed head", { landedHead: undefined }],
+    ["short landed head", { landedHead: "abcd" }],
+    ["nonhex landed tree", { landedTree: "z".repeat(40) }],
+    ["missing landed tree", { landedTree: undefined }],
+    ["only candidate fields", { landedHead: undefined, landedTree: undefined, candidateHead: "b".repeat(40), candidateTree: "c".repeat(40) }],
     ["missing queue evidence", { receipt: undefined }],
     ["empty queue evidence", { receipt: "" }],
     ["blank queue evidence", { receipt: " \n " }],
