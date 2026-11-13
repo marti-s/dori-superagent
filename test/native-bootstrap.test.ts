@@ -228,7 +228,7 @@ test("defaultDeps rejects extra tuple keys", async () => {
   expect(() => fx.deps({ extra: true })).toThrow("FORMA_QUEUE_BOOTSTRAP");
 });
 
-test("clean pinned source executes isolated Python and queues without a candidate receipt", async () => {
+test("clean pinned source executes isolated Python and queues without a landing receipt", async () => {
   const fx = await sandbox();
   const d = fx.deps();
   // Configuration has already been restored by configured(); admission must use the snapshot.
