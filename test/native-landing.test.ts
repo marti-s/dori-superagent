@@ -18,7 +18,7 @@ function setup(checks: readonly { readonly name: string; readonly bucket: string
   d.store.saveReceipt({ pr, sha: head, verdict: "CLEAR", model: "default", at: w.clock, summary: "clear" }, "VERDICT: CLEAR");
   const landed = {
     status: "landed", repo, pr: 7, expectedHead: head,
-    candidateHead: "b".repeat(40), candidateTree: "c".repeat(40), receipt: "queue://landings/42",
+    landedHead: "b".repeat(40), landedTree: "c".repeat(40), receipt: "queue://landings/42",
   };
   w.reviewer = () => ({ code: 0, stdout: JSON.stringify(landed) });
   return { w, d, landed };
@@ -29,7 +29,7 @@ test.each([
   ["all skipped", [{ name: "source", bucket: "skipping" }]],
   ["failed", [{ name: "source", bucket: "fail" }]],
   ["pending", [{ name: "source", bucket: "pending" }]],
-] as const)("native candidate verification delegates %s source checks to the trusted backend", async (_name, checks) => {
+] as const)("native landing verification delegates %s source checks to the trusted backend", async (_name, checks) => {
   const { w, d } = setup(checks);
   w.reviewer = (argv) => ({
     code: 0,
@@ -47,11 +47,11 @@ test.each([
   expect(w.usage).toEqual([]);
 });
 
-test("native landed output retains correlated candidate and queue evidence", async () => {
+test("native landed output retains correlated landed head and queue evidence", async () => {
   const { w, d, landed } = setup();
 
   expect(await mergeGate(d, pr)).toBe(
-    `MERGED ${pr} head=${head} candidateHead=${landed.candidateHead} candidateTree=${landed.candidateTree} receipt=${landed.receipt}`,
+    `MERGED ${pr} head=${head} landedHead=${landed.landedHead} landedTree=${landed.landedTree} receipt=${landed.receipt}`,
   );
   expect(w.usage).toEqual([{ name: "dori.merge_decided", outcome: "merged" }]);
 });
@@ -105,8 +105,9 @@ test.each([
   ["queued wrong PR", { status: "queued", pr: 8 }],
   ["queued wrong head", { status: "queued", expectedHead: "d".repeat(40) }],
   ["landed wrong head", { expectedHead: "d".repeat(40) }],
-  ["landed missing candidate", { candidateHead: undefined }],
-  ["landed invalid tree", { candidateTree: "z".repeat(40) }],
+  ["landed missing landed head", { landedHead: undefined }],
+  ["landed invalid tree", { landedTree: "z".repeat(40) }],
+  ["landed with only candidate fields", { landedHead: undefined, landedTree: undefined, candidateHead: "b".repeat(40), candidateTree: "c".repeat(40) }],
   ["landed missing evidence", { receipt: undefined }],
 ])("native backend refuses %s without falling back", async (_name, change) => {
   const { w, d, landed } = setup();
@@ -120,7 +121,7 @@ test.each([
 
 test("native backend verification refusal cannot become a GitHub merge", async () => {
   const { w, d } = setup();
-  w.reviewer = () => ({ code: 1, stdout: "candidate evidence rejected" });
+  w.reviewer = () => ({ code: 1, stdout: "landing evidence rejected" });
   const exec: Exec = async (command, argv, options) => {
     const result = await w.exec(command, argv, options);
     return command === backend ? { ...result, stderr: "landing refused: checker approval missing at expected head" } : result;

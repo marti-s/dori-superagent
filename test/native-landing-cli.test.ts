@@ -10,8 +10,8 @@ const NATIVE = "formaengine/forma-rs";
 const GENERIC = "o/r";
 const head = "a".repeat(40);
 const moved = "d".repeat(40);
-const candidateHead = "b".repeat(40);
-const candidateTree = "c".repeat(40);
+const landedHead = "b".repeat(40);
+const landedTree = "c".repeat(40);
 const GREEN = '[{"name":"build","bucket":"pass"}]';
 const SKIPPED = '[{"name":"build","bucket":"skipping"}]';
 
@@ -91,7 +91,7 @@ async function reviewed(fx: Fixture, repo: string, verdict: "CLEAR" | "BLOCK" = 
 const receipt = (repo: string, over: Record<string, unknown> = {}) =>
   JSON.stringify({ repo, pr: 7, expectedHead: head, status: "queued", ...over });
 const landed = (repo: string, over: Record<string, unknown> = {}) =>
-  receipt(repo, { status: "landed", candidateHead, candidateTree, receipt: "queue-receipt-1", ...over });
+  receipt(repo, { status: "landed", landedHead, landedTree, receipt: "queue-receipt-1", ...over });
 
 describe("native formaengine/forma-rs landing", () => {
   test("backend queued output is QUEUED, never merged, with empty source-head checks", async () => {
@@ -130,7 +130,7 @@ describe("native formaengine/forma-rs landing", () => {
 
     expect(r.code).toBe(0);
     expect(r.stdout).toBe(
-      `MERGED ${NATIVE}#7 head=${head} candidateHead=${candidateHead} candidateTree=${candidateTree} receipt=queue-receipt-1\n`,
+      `MERGED ${NATIVE}#7 head=${head} landedHead=${landedHead} landedTree=${landedTree} receipt=queue-receipt-1\n`,
     );
     expect(backendCalls(fx)).toHaveLength(1);
     expect(merges(fx)).toEqual([]);
@@ -189,7 +189,8 @@ describe("native formaengine/forma-rs landing", () => {
     ["unrelated head", receipt(NATIVE, { expectedHead: moved }), 0],
     ["unknown status", receipt(NATIVE, { status: "pending" }), 0],
     ["landed without queue evidence", landed(NATIVE, { receipt: "" }), 0],
-    ["landed with bad candidate tree", landed(NATIVE, { candidateTree: "xyz" }), 0],
+    ["landed with bad landed tree", landed(NATIVE, { landedTree: "xyz" }), 0],
+    ["landed with only candidate fields", landed(NATIVE, { landedHead: undefined, landedTree: undefined, candidateHead: landedHead, candidateTree: landedTree }), 0],
     ["backend failure with a matching receipt", receipt(NATIVE), 1],
   ])("malformed or failed backend (%s) refuses without fallback", async (_name, out, backendCode) => {
     const fx = sandbox();
