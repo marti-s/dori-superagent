@@ -30,7 +30,7 @@ async function sandbox() {
   const source = join(root, "source");
   const bin = join(root, "bin");
   const home = join(root, "home");
-  const workflows = join(source, ".atomic/workflows");
+  const workflows = join(source, ".agents/workflows");
   const sentinel = join(root, "sibling-imported");
   const hostile = join(root, "hostile-imported");
   const execution = join(root, "python-execution.json");
@@ -62,7 +62,7 @@ async function sandbox() {
   await git("push", "origin", "main");
   await git("checkout", "-b", "candidate");
   writeFileSync(join(workflows, "caller_sibling.py"), `from pathlib import Path\nPath(${JSON.stringify(sentinel)}).write_text("trusted sibling")\n`);
-  const entry = join(workflows, "dori-landing.py");
+  const entry = join(workflows, "landing-verifier.py");
   writeFileSync(entry, `import argparse, json, sys
 from pathlib import Path
 HERE = Path(__file__).resolve().parent
@@ -102,7 +102,7 @@ console.log("VERDICT: " + readFileSync(${JSON.stringify(join(root, "verdict"))},
 import { writeFileSync } from "node:fs";
 writeFileSync(${JSON.stringify(sentinel)}, "arbitrary executable ran");
 `);
-  env["DORI_LANDING_BACKEND"] = JSON.stringify(["python3", entry]);
+  env["LANDING_BACKEND"] = JSON.stringify(["python3", entry]);
   env["FORMA_QUEUE_BOOTSTRAP"] = JSON.stringify({ repo, pr: 7, head, tree });
   return { root, source, workflows, sentinel, hostile, execution, entry, env, git, head, tree, base };
 }
@@ -145,19 +145,19 @@ const invalidSources: readonly [string, (fx: Fixture) => void | Promise<unknown>
     delete fx.env["FORMA_QUEUE_BOOTSTRAP"];
     const python = Bun.which("python3");
     if (!python) throw new Error("CLI sandbox requires python3");
-    fx.env["DORI_LANDING_BACKEND"] = JSON.stringify([python, fx.entry]);
+    fx.env["LANDING_BACKEND"] = JSON.stringify([python, fx.entry]);
   }],
   ["missing tuple with a prefixed adapter", (fx) => {
     delete fx.env["FORMA_QUEUE_BOOTSTRAP"];
-    fx.env["DORI_LANDING_BACKEND"] = JSON.stringify(["/usr/bin/env", "python3", fx.entry]);
+    fx.env["LANDING_BACKEND"] = JSON.stringify(["/usr/bin/env", "python3", fx.entry]);
   }],
   ["missing tuple with a relative prefixed adapter", (fx) => {
     delete fx.env["FORMA_QUEUE_BOOTSTRAP"];
-    fx.env["DORI_LANDING_BACKEND"] = JSON.stringify(["/usr/bin/env", "python3", ".atomic/workflows/dori-landing.py"]);
+    fx.env["LANDING_BACKEND"] = JSON.stringify(["/usr/bin/env", "python3", ".agents/workflows/landing-verifier.py"]);
   }],
   ["missing tuple with a normalized prefixed adapter", (fx) => {
     delete fx.env["FORMA_QUEUE_BOOTSTRAP"];
-    fx.env["DORI_LANDING_BACKEND"] = JSON.stringify(["/usr/bin/env", "python3", ".atomic/workflows/./dori-landing.py"]);
+    fx.env["LANDING_BACKEND"] = JSON.stringify(["/usr/bin/env", "python3", ".agents/workflows/./landing-verifier.py"]);
   }],
   ["source HEAD differs from requested head", (fx) => {
     writeFileSync(join(fx.root, "head"), fx.base);
@@ -178,8 +178,8 @@ const invalidSources: readonly [string, (fx: Fixture) => void | Promise<unknown>
     await fx.git("push", "origin", `${fresh}:refs/heads/main`);
     await fx.git("update-ref", "refs/remotes/origin/main", fx.base);
   }],
-  ["arbitrary Python entry", (fx) => { fx.env["DORI_LANDING_BACKEND"] = JSON.stringify(["python3", join(fx.workflows, "arbitrary.py")]); }],
-  ["arbitrary executable entry", (fx) => { fx.env["DORI_LANDING_BACKEND"] = JSON.stringify([join(fx.root, "bin/arbitrary")]); }],
+  ["arbitrary Python entry", (fx) => { fx.env["LANDING_BACKEND"] = JSON.stringify(["python3", join(fx.workflows, "arbitrary.py")]); }],
+  ["arbitrary executable entry", (fx) => { fx.env["LANDING_BACKEND"] = JSON.stringify([join(fx.root, "bin/arbitrary")]); }],
 ];
 
 describe("native caller bootstrap through the real CLI", () => {
@@ -224,7 +224,7 @@ describe("native caller bootstrap through the real CLI", () => {
   test("native admission without a backend refuses before imports", async () => {
     const fx = await sandbox();
     await reviewed(fx);
-    delete fx.env["DORI_LANDING_BACKEND"];
+    delete fx.env["LANDING_BACKEND"];
 
     const result = await dori(fx, ["merge", `${repo}#7`]);
 
