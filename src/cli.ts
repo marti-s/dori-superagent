@@ -2,8 +2,9 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
-  defaultDeps, done, dutyTick, mergeGate, ready, Refusal, report, review, send, sendToShell, startLane, ROLES, type Deps, type SendResult,
+  defaultDeps, done, dutyTick, mergeGate, parsePr, ready, Refusal, report, review, send, sendToShell, startLane, ROLES, type Deps, type SendResult,
 } from "./harness.ts";
+import { cleanupMergedPr } from "./cleanup.ts";
 import { shq } from "./terminal.ts";
 import { backlogAdd, backlogDecide, backlogDrop, backlogImport, loopTick, msUntilNext, summary, HOUR, IMPORT_LIMIT } from "./loop.ts";
 import type { Role } from "./store.ts";
@@ -28,6 +29,9 @@ const USAGE = `dori - a proactive multi-session harness on Herdr (hc) + omo
   dori review <owner/repo#N> [--model M]      fresh omo reviewer at the exact head -> receipt
   dori merge <owner/repo#N> [--dry-run]       exact-head CLEAR; Forma requires its native queue backend
                                               other repos: green checks -> backend, or squash merge when unset
+  dori cleanup <owner/repo#N> [--dry-run]     remove only confirmed merged, unused exact-head source refs
+               [--retire-worktree PATH --owner LANE --expected-head SHA]
+                                              explicitly retire a clean, closed owner's linked worktree first
   dori done <key> [--abandon --note WHY]      lead closes a READY lane, or abandons one that never reported READY
   dori status
 
@@ -35,7 +39,7 @@ const USAGE = `dori - a proactive multi-session harness on Herdr (hc) + omo
 send, report and ready exit 3 and print HELD <target> when the delivery may or may not have reached the pane:
 it is held and never resent, so do not send it again. QUEUED (exit 0) means it waits in the pane's inbox.`;
 
-const COMMANDS = new Set(["up", "role", "start", "report", "ready", "send", "duty", "review", "merge", "done", "status", "loop", "backlog"]);
+const COMMANDS = new Set(["up", "role", "start", "report", "ready", "send", "duty", "review", "merge", "cleanup", "done", "status", "loop", "backlog"]);
 
 type Args = { pos: string[]; flags: Map<string, string[]> };
 
@@ -113,6 +117,9 @@ function status(d: Deps): void {
     const age = Math.round((d.now() - l.lastActivityAt) / 60_000);
     console.log(`${l.key.padEnd(24)} ${l.status.padEnd(8)} ${l.paneId.padEnd(8)} active ${age}m ago  ${last ? `${last.kind}: ${last.text.slice(0, 60)}` : ""}`);
   }
+  for (const record of d.store.cleanups()) {
+    console.log(`cleanup ${record.pr} ${record.status}: ${record.detail}`);
+  }
 }
 
 export async function main(argv: readonly string[], d: Deps = defaultDeps()): Promise<number> {
@@ -120,6 +127,20 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
   const [cmd, x] = a.pos;
   if (cmd !== undefined && COMMANDS.has(cmd)) d.usage.touch();
   switch (cmd) {
+    case "cleanup": {
+      const path = one(a, "retire-worktree");
+      const owner = one(a, "owner");
+      const expectedHead = one(a, "expected-head");
+      if ((path && (!owner || !expectedHead)) || (owner && !path)) {
+        throw new Refusal("worktree retirement needs --retire-worktree, --owner and --expected-head");
+      }
+      const result = await cleanupMergedPr(d, parsePr(need(x, "PR")), {
+        dryRun: one(a, "dry-run") === "true", expectedHead,
+        retire: path && owner && expectedHead ? { path, owner, head: expectedHead } : undefined,
+      });
+      console.log(JSON.stringify(result));
+      return result.status === "held" ? 1 : 0;
+    }
     case "up":
       await up(d, resolve(one(a, "cwd") ?? process.cwd()));
       return 0;

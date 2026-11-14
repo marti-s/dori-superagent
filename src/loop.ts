@@ -259,6 +259,10 @@ async function sync(d: Deps, run: LoopRun): Promise<void> {
           const m = lane.final?.evidence.map((e) => PR_RE.exec(e)).find(Boolean);
           if (m && (await ghState(d, "pr", m[1]!, m[2]!)) === "MERGED") {
             item.status = "done";
+            const pr = `${m[1]}#${m[2]}`;
+            if (!d.store.cleanups().some((record) => record.pr === pr)) {
+              d.store.saveCleanup({ pr, status: "pending", detail: "merged PR observed by hourly loop", at: d.now() });
+            }
             log(d, item, "done", "PR merged");
             run.synced.push(`${item.id} done (PR merged)`);
             run.findings.push(`${item.id} READY and its PR merged: dori done ${item.id}`);

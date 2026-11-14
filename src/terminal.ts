@@ -76,6 +76,8 @@ export interface TerminalBackend {
   close(paneId: string): Promise<void>;
   /** Removes a finished lane's terminal and closes its app tab when nothing else lives there; returns what it did. */
   retire(paneId: string, laneKey: string): Promise<string>;
+  /** Fresh global terminal inventory. Missing capability or metadata must hold worktree retirement. */
+  directoryInUse?(cwd: string): Promise<boolean>;
 }
 
 const INPUT_RULE = /^─{10,}$/;

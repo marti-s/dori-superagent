@@ -8,6 +8,7 @@ import { Telemetry, type MergeOutcome, type Usage } from "./telemetry.ts";
 import { HerdrCore } from "./herdr-core.ts";
 import { attestBootstrap, parseFormaQueueBootstrap, type FormaQueueBootstrap } from "./native-bootstrap.ts";
 import { Refusal } from "./refusal.ts";
+import { cleanupMergedPr } from "./cleanup.ts";
 
 export { KEY_RE, reservedKey };
 export { Refusal } from "./refusal.ts";
@@ -361,6 +362,18 @@ export async function done(d: Deps, key: string, abandon?: { note: string }): Pr
   lane.closedAt = d.now();
   lane.log.push({ at: lane.closedAt, kind: "done", text: abandon ? `abandoned without READY: ${abandon.note}` : "closed by lead" });
   d.store.saveLane(lane);
+  if (!abandon) {
+    for (const link of lane.final?.evidence ?? []) {
+      const match = /^https:\/\/github\.com\/formaengine\/forma-rs\/pull\/(\d+)\/?$/.exec(link);
+      if (!match) continue;
+      const pr = `formaengine/forma-rs#${match[1]}`;
+      const previous = d.store.cleanups().find((record) => record.pr === pr);
+      if (previous?.status === "complete") continue;
+      d.store.saveCleanup({
+        ...previous, pr, status: "pending", detail: "owner closed; waiting for confirmed merge and retirement", at: d.now(),
+      });
+    }
+  }
 }
 
 /** A lane whose terminal finished or vanished without READY: recorded as lost and reported to the lead as [LOST]. */
@@ -469,6 +482,11 @@ export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
     }
   }
   await retireClosedLanes(d, events);
+  for (const record of d.store.cleanups()) {
+    if (record.status === "complete") continue;
+    const result = await cleanupMergedPr(d, parsePr(record.pr), { expectedHead: record.sha, automatic: true });
+    events.push({ action: `cleanup-${result.status}`, detail: `${result.pr}: ${result.detail}` });
+  }
   const count = (pred: (a: string) => boolean) => events.filter((e) => pred(e.action)).length;
   d.usage.touch();
   d.usage.duty({
@@ -592,6 +610,10 @@ export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean 
     }
     switch (receipt.status) {
       case "queued":
+        d.store.saveCleanup({
+          ...d.store.cleanups().find((record) => record.pr === pr.id),
+          pr: pr.id, sha, status: "pending", detail: "waiting for confirmed merge", at: d.now(),
+        });
         return `QUEUED ${pr.id} head=${sha}`;
       case "landed":
         if (!("candidateHead" in receipt) || typeof receipt.candidateHead !== "string" || !/^[a-f0-9]{40}$/i.test(receipt.candidateHead) ||
@@ -600,6 +622,7 @@ export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean 
           throw new Refusal("MERGE_REFUSED landing backend landed receipt requires candidateHead, candidateTree and queue evidence");
         }
         d.usage.record({ name: "dori.merge_decided", outcome: "merged" });
+        await cleanupMergedPr(d, pr, { expectedHead: sha, automatic: true });
         return `MERGED ${pr.id} head=${sha} candidateHead=${receipt.candidateHead} candidateTree=${receipt.candidateTree} receipt=${receipt.receipt}`;
       default:
         throw new Refusal("MERGE_REFUSED landing backend returned an unknown status");
@@ -607,6 +630,7 @@ export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean 
   }
   await gh(d, ["pr", "merge", String(pr.number), "--repo", pr.repo, "--squash", "--match-head-commit", sha]);
   d.usage.record({ name: "dori.merge_decided", outcome: "merged" });
+  await cleanupMergedPr(d, pr, { expectedHead: sha, automatic: true });
   return `MERGED ${pr.id} head=${sha}`;
 }
 

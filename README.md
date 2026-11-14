@@ -65,7 +65,7 @@ A lane is one omo session in its own Herdr tab, started with one brief and the l
 
 The duty loop is `dori duty --interval 60`, a plain process in a pane next to a duty omo session. Each tick it flushes queued messages into panes that have gone idle, nudges lanes that have been silent, escalates to the lead, and marks a lane whose pane vanished as lost. `dori duty stop --text 'why'` is its kill switch: until `dori duty resume`, every tick only prints `DUTY stopped: <why>` and skips all duty work (no flushes, nudges, escalations or duty counts), and queued messages wait in the inbox. `dori duty status` says whether it is stopped and why.
 
-State is JSON on disk under `~/.dori` (or `$DORI_HOME`): `lanes/`, `inbox/`, `briefs/`, `receipts/`, plus `backlog/` and `loop/` for the hourly loop and `duty/` for the duty loop's stop file. Besides the agent sessions, the only long-running processes the harness adds are the duty loop and the hourly loop, and the only runtime dependency is Bun.
+State is JSON on disk under `~/.dori` (or `$DORI_HOME`): `lanes/`, `inbox/`, `briefs/`, `receipts/`, `cleanup/`, plus `backlog/` and `loop/` for the hourly loop and `duty/` for the duty loop's stop file. Besides the agent sessions, the only long-running processes the harness adds are the duty loop and the hourly loop, and the only runtime dependency is Bun.
 
 ![lane lifecycle](docs/lane-flow.png)
 
@@ -183,6 +183,30 @@ The first bridge landing uses an explicitly approved `FORMA_QUEUE_BOOTSTRAP` JSO
 Other repositories retain the GitHub check policy: empty, all-skipped, red and pending checks refuse admission, including when a landing backend is configured. Their `--dry-run` checks admission without invoking the backend.
 
 The backend must exit 0 and write exactly one JSON object to stdout, with request identity `(repo, pr, expectedHead)` matching the invocation. A queued response is `{"status":"queued","repo":"owner/repo","pr":123,"expectedHead":"FULL_SHA"}`. Dori prints `QUEUED owner/repo#123 head=FULL_SHA`; this does not count as a merge. A landed response has the same identity, `"status":"landed"`, a `candidateHead` and `candidateTree` of 40 hexadecimal characters each, and a nonblank string `receipt` locating existing queue evidence. The backend owns that evidence; Dori checks the response identity and fields without substituting local evidence or bypassing checks. Dori prints `MERGED` with the request head, candidate head, candidate tree and receipt locator only for a valid landed response. Nonzero exits, reported timeouts, malformed output, identity mismatches, unknown statuses and missing evidence fail. A configured backend never falls back to `gh pr merge`.
+
+### Merged source branches
+
+After a successful merge or landing response, Dori checks whether the source branch can be removed. A queued response only registers pending cleanup. The duty loop rechecks pending or held entries, including merged PRs observed by the hourly loop, and respects its stop switch. `dori status` shows each result under `cleanup/`; a held cleanup never turns an already successful merge into a reported failure.
+
+```sh
+dori cleanup owner/repo#123 --dry-run
+dori cleanup owner/repo#123
+dori cleanup owner/repo#123 --retire-worktree /path/to/lane --owner lane-key --expected-head FULL_SHA
+```
+
+Cleanup requires fresh GitHub confirmation that this exact same-repository PR merged into `main`, its merge commit in freshly fetched main, and a complete paginated open-PR inventory with no head or stacked-base consumer. It discovers local clones from the current directory and known lane/backlog directories and checks both fetch and all push URLs against the PR repository.
+
+Every local and remote source ref must still equal the merged PR head. Additional commits, local upstream consumers, unlanded descendant branches and active/waiting/READY PR owners hold cleanup. Linked branch and same-head snapshot worktrees hold cleanup by default.
+
+An explicit `--retire-worktree` request records the owner lane's pane/run identity, exact head and the linked tree's filesystem identity. It can wait alongside a queued landing, but neither registration, READY nor a done flag authorizes deletion. After GitHub independently confirms the merge, retirement requires the same owner run to be done and retired, all owning terminals gone, no other active/paused lane or backlog consumer, complete terminal and open-file inventories showing no use, and a clean tracked/untracked/ignored state. Primary clones, locked or detached review snapshots, unlanded commits and unknown ownership stay protected.
+
+Verified retirement uses `git worktree remove` without force before source refs are removed. Completed approvals are consumed; a reused path or new owner run requires new reconciliation. Stable clone roots and retirement receipts persist so a later duty pass can finish partial cleanup after a linked directory is gone. No worktree/cache pruning or blanket ignored-target deletion occurs. Existing stale trees outside Dori lane ownership require separate explicit owner reconciliation.
+
+A fully landed, proved-unused worktree can retire while source refs remain held for an unlanded local descendant. The receipt records its removed path and the branch-retention reason; dependent branches and both source refs remain intact.
+
+Remote deletion uses an explicit expected-head lease; local deletion compares the expected old ref. This allows squash/rebase cleanup using GitHub's merge evidence without treating source ancestry as proof or using `branch -D`. A concurrent ref advance is preserved. If a checkout races local deletion, Dori attempts to restore its deleted refs only while they remain absent, without overwriting replacement work. Missing evidence, API failures, unknown origins and shallow clones hold cleanup for a later pass.
+
+`--dry-run` performs the same reads and fetches but removes no refs and schedules no later deletion. Fork-head PRs are held rather than guessing which fork to modify.
 
 ## Hourly loop
 

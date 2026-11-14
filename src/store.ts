@@ -44,6 +44,27 @@ export type ReviewReceipt = {
   review: string;
 };
 
+export type WorktreeRetirement = {
+  readonly path: string;
+  readonly owner: string;
+  readonly head: string;
+  readonly paneId: string;
+  readonly createdAt: number;
+  readonly gitIdentity: string;
+  readonly at: number;
+  readonly removedAt?: number;
+};
+
+export type CleanupRecord = {
+  readonly pr: string;
+  readonly sha?: string;
+  readonly status: "pending" | "held" | "complete" | "eligible";
+  readonly detail: string;
+  readonly at: number;
+  readonly worktrees?: readonly WorktreeRetirement[];
+  readonly clones?: readonly string[];
+};
+
 export type ItemStatus = "open" | "running" | "done" | "dropped";
 
 /** One backlog entry. Its id is the lane key the hourly loop starts it under. */
@@ -99,7 +120,7 @@ const checkedId = (id: string): string => {
 
 export class Store {
   constructor(readonly root: string = process.env["DORI_HOME"] ?? join(homedir(), ".dori")) {
-    for (const d of ["lanes", "inbox", "briefs", "receipts", "backlog", "loop/runs", "duty"]) mkdirSync(join(root, d), { recursive: true });
+    for (const d of ["lanes", "inbox", "briefs", "receipts", "backlog", "cleanup", "loop/runs", "duty"]) mkdirSync(join(root, d), { recursive: true });
   }
 
   private readJson<T>(path: string): T | undefined {
@@ -126,6 +147,18 @@ export class Store {
       .map((f) => this.readJson<Lane>(join(this.root, "lanes", f)))
       .filter((l): l is Lane => l !== undefined)
       .sort((a, b) => a.createdAt - b.createdAt || a.key.localeCompare(b.key));
+  }
+
+  saveCleanup(record: CleanupRecord): void {
+    if (!/^[\w.-]+\/[\w.-]+#\d+$/.test(record.pr)) throw new Error("invalid cleanup PR");
+    this.writeJson(join(this.root, "cleanup", `${record.pr.replaceAll("/", "__").replace("#", "_")}.json`), record);
+  }
+
+  cleanups(): CleanupRecord[] {
+    return readdirSync(join(this.root, "cleanup"))
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => this.readJson<CleanupRecord>(join(this.root, "cleanup", name)))
+      .filter((record): record is CleanupRecord => record !== undefined);
   }
 
   laneByPane(paneId: string): Lane | undefined {

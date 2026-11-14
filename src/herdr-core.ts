@@ -1,4 +1,5 @@
 import { basename, join } from "node:path";
+import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import {
   CommandError, DeliveryUncertain, interactiveShellInFront, omoScreenIdle, shq, spawnExec,
@@ -237,6 +238,23 @@ export class HerdrCore implements TerminalBackend {
     // This is an explicit program launch, never an agent message. exec leaves no shell prompt behind on exit.
     await this.call(["send", paneId, `exec /bin/sh -c ${shq(commandLine)}`]);
     this.launchShells.delete(paneId);
+  }
+
+  async directoryInUse(cwd: string): Promise<boolean> {
+    const listing = object(JSON.parse(await this.call(["ls", "--json"])));
+    const terminals = listing["terminals"];
+    if (!Array.isArray(terminals)) throw new Error("hc returned no complete terminal inventory");
+    const root = realpathSync(cwd);
+    for (const entry of terminals) {
+      const value = object(entry);
+      if (["finished", "exited", "gone"].includes(String(value["state"]))) continue;
+      if (value["state"] !== "live" || typeof value["cwd"] !== "string" || !value["cwd"]) {
+        throw new Error("hc returned incomplete live terminal cwd metadata");
+      }
+      const path = realpathSync(value["cwd"]);
+      if (path === root || path.startsWith(root + "/")) return true;
+    }
+    return false;
   }
 
   async status(paneId: string): Promise<AgentStatus> {

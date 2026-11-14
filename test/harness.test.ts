@@ -518,7 +518,9 @@ describe("review + merge gate", () => {
     await expect(mergeGate(d, "o/r#7")).rejects.toThrow("every check was skipped");
     gh(w, [{ name: "test", bucket: "pass" }, { name: "docs", bucket: "skipping" }]);
     expect(await mergeGate(d, "o/r#7")).toBe(`MERGED o/r#7 head=${head}`);
-    expect(w.calls.at(-1)!.argv).toContain("--match-head-commit");
+    expect(w.calls.filter((call) => call.cmd === "gh" && call.argv[0] === "pr" && call.argv[1] === "merge")).toEqual([
+      { cmd: "gh", argv: ["pr", "merge", "7", "--repo", "o/r", "--squash", "--match-head-commit", head] },
+    ]);
     expect(w.usage.filter((e) => e.name === "dori.merge_decided").map((e) => (e as { outcome: string }).outcome))
       .toEqual(["no_receipt", "review_block", "no_checks", "checks_red", "checks_all_skipped", "merged"]);
     expect(w.usage.filter((e) => e.name === "dori.review_completed")).toHaveLength(2);
