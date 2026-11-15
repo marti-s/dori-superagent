@@ -35,7 +35,7 @@ export type Deps = {
 };
 
 export const defaultDeps = (): Deps => {
-  const landingBackend = landingBackendArgv(process.env["DORI_LANDING_BACKEND"]);
+  const landingBackend = landingBackendArgv(process.env["LANDING_BACKEND"]);
   const formaQueueBootstrap = parseFormaQueueBootstrap(process.env["FORMA_QUEUE_BOOTSTRAP"]);
   const store = new Store();
   return {
@@ -56,7 +56,7 @@ export const defaultDeps = (): Deps => {
 
 function landingBackendArgv(raw: string | undefined): readonly string[] | undefined {
   if (raw === undefined) return undefined;
-  const message = "DORI_LANDING_BACKEND must be a JSON nonempty array of nonempty strings";
+  const message = "LANDING_BACKEND must be a JSON nonempty array of nonempty strings";
   let value: unknown;
   try {
     value = JSON.parse(raw);
@@ -567,7 +567,7 @@ export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean 
     if (!/^[a-f0-9]{40}$/i.test(sha)) throw new Refusal("MERGE_REFUSED landing backend requires a full head SHA");
     const backend = pr.repo.toLowerCase() === NATIVE_QUEUE_REPO && (d.formaQueueBootstrap ||
       d.landingBackend.some((arg) => /(^|\/)(python|pypy)(\d+(\.\d+)*)?$/i.test(arg)) ||
-      d.landingBackend.some((arg) => arg.toLowerCase().includes(".atomic/workflows/dori-landing.py")))
+      d.landingBackend.some((arg) => arg.toLowerCase().includes(".agents/workflows/landing-verifier.py")))
       ? await attestBootstrap(d.exec, d.landingBackend, { pin: d.formaQueueBootstrap, repo: pr.repo, pr: pr.number, head: sha })
       : d.landingBackend;
     const [command, ...argv] = backend;
