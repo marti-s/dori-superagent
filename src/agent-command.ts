@@ -3,7 +3,12 @@ import { Refusal } from "./refusal.ts";
 /** Split DORI_AGENT_CMD into literal argv: quotes and escapes, without shell expansion or execution. */
 export function agentCommandArgv(raw: string): readonly [string, ...string[]] {
   // A complete executable name or path wins, including an unquoted path containing spaces.
-  if (Bun.which(raw) !== null) return [raw];
+  try {
+    if (Bun.which(raw) !== null) return [raw];
+  } catch (error) {
+    // Bun exposes this native filename limit as a plain Error without a code; argv may still be valid.
+    if (!(error instanceof Error) || error.name !== "Error" || error.message !== "bin path is too long") throw error;
+  }
   const words: string[] = [];
   let word = "";
   let started = false;

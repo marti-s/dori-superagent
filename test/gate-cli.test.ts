@@ -24,10 +24,13 @@ const outputs = [
   { name: "failed verdict", stdout: "VERDICT: CLEAR\n", agentCode: 23, verdict: undefined, code: 1 },
   { name: "failed partial", stdout: "Partial review\n", agentCode: 23, verdict: undefined, code: 1 },
 ] as const;
-const scenarios = outputs.flatMap((output) => [
-  { ...output, commandLine: false },
-  { ...output, commandLine: true },
-]);
+const scenarios = [
+  ...outputs.flatMap((output) => [
+    { ...output, commandLine: false, fixedArgument: "x".repeat(10) },
+    { ...output, commandLine: true, fixedArgument: "x".repeat(10) },
+  ]),
+  { ...outputs[0], name: "long fixed argument", commandLine: true, fixedArgument: "x".repeat(1000) },
+];
 
 test.each(scenarios)("lane CLI $name commandLine=$commandLine preserves the review outcome", async (scenario) => {
   const root = mkdtempSync(join(tmpdir(), "review-command-"));
@@ -38,7 +41,9 @@ test.each(scenarios)("lane CLI $name commandLine=$commandLine preserves the revi
     mkdirSync(bin, { recursive: true });
     mkdirSync(home);
     const model = scenario.commandLine ? "fixture/selected-model" : "default";
-    const fixed = scenario.commandLine ? ["--lane", "ci economy", "", "owner's choice", "$HOME;$(exit 99)"] : [];
+    const fixed = scenario.commandLine
+      ? ["--lane", "ci economy", "", "owner's choice", "$HOME;$(exit 99)", "--label", scenario.fixedArgument]
+      : [];
     const gh = join(bin, "gh");
     writeFileSync(
       gh,
