@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { agentCommandArgv } from "./agent-command.ts";
 import { prompt, type Deps } from "./harness.ts";
 import { Refusal } from "./refusal.ts";
 import { loadHooks, substitute } from "./hooks.ts";
@@ -39,7 +40,7 @@ export async function review(
   const text = prompt("review.md", vars);
   const [cmd, ...argv] = hook
     ? substitute(hook, { ...vars, text })
-    : [d.agentCmd, "-p", "--no-session", ...(model ? ["--model", model] : []), text];
+    : [...agentCommandArgv(d.agentCmd), "-p", "--no-session", ...(model ? ["--model", model] : []), text];
   const res = await d.exec(cmd ?? d.agentCmd, argv);
   const verdicts = [...res.stdout.matchAll(/^VERDICT:\s*(CLEAR|BLOCK)\b/gm)];
   const last = verdicts.at(-1);

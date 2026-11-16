@@ -146,7 +146,10 @@ describe("reviewCommand and DORI_PROMPTS_DIR", () => {
       argv[1] === "view" ? { code: 0, stdout: JSON.stringify({ headRefOid: head }) } : { code: 1, stdout: "" };
     config(d, { hooks: { reviewCommand: ["my-reviewer", "{repo}", "{number}", "{sha}", "{pr}"] } });
     w.reviewer = () => ({ code: 0, stdout: "looked\nVERDICT: BLOCK\nVERDICT: CLEAR" });
-    expect(await review(d, "o/r#5", "ignored/model")).toEqual({ verdict: "CLEAR", sha: head });
+    expect(await review({ ...d, agentCmd: "'unterminated" }, "o/r#5", "ignored/model")).toEqual({
+      verdict: "CLEAR",
+      sha: head,
+    });
     expect(hookCalls(w, "my-reviewer")).toEqual([["my-reviewer", "o/r", "5", head, "o/r#5"]]);
     expect(w.calls.some((c) => c.cmd === "omo")).toBe(false);
     expect(d.store.receipt("o/r#5", head)).toMatchObject({ verdict: "CLEAR", model: "hook" });
