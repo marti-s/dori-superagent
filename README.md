@@ -172,6 +172,8 @@ A lane that has not reported for 10 minutes, and whose pane is not working, gets
 
 `dori merge` reads the PR's head SHA with `gh`, then requires a receipt for that SHA in `~/.dori/receipts/` with verdict `CLEAR`. Only `dori review` writes receipts: it runs a fresh non-interactive omo on `prompts/review.md` pinned to that SHA, and when the reviewer prints no `VERDICT:` line, no receipt is written.
 
+For the built-in reviewer, `DORI_AGENT_CMD` accepts an executable followed by fixed arguments, with single quotes, double quotes and backslash escapes. A value that resolves as one executable is used as-is, including an unquoted path containing spaces. Otherwise, quote paths or arguments containing spaces, for example `DORI_AGENT_CMD='"/opt/lane tools/reviewer-omo" --account "review lane"'`. Review flags, including an explicit `--model`, follow those fixed arguments. The executable launches directly: variables, substitutions, globs and shell operators remain literal; use an executable wrapper for shell setup. Empty commands and malformed quoting are refused. `hooks.reviewCommand` retains precedence and uses its own argv template.
+
 Then `gh pr checks` must return at least one check, every check must be `pass` or `skipping`, and at least one must be `pass`. An empty check list is refused with "an empty check list is never green". A push after the review changes the head SHA, so the receipt no longer matches and `dori review` has to run again.
 
 ### Hooks for your own tooling
