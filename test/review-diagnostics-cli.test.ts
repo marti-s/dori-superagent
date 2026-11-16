@@ -2,16 +2,21 @@ import { expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { shq } from "../src/terminal.ts";
 
 const cli = resolve(import.meta.dir, "../src/cli.ts");
 const pr = "sandbox/review#9001";
 const sha = "a".repeat(40);
 const key = `sandbox__review_9001@${sha}`;
-const scenarios = [
+const outputs = [
   { name: "empty0", stdout: "", stderr: "", code: 1, attempts: 2 },
   { name: "stderr0", stdout: "", stderr: " \nprovider unavailable\t\n", code: 1, attempts: 2 },
   { name: "validverdict", stdout: "No findings\nVERDICT: CLEAR\n", stderr: "", code: 0, attempts: 1 },
 ] as const;
+const scenarios = outputs.flatMap((output) => [
+  { ...output, commandLine: false },
+  { ...output, commandLine: true },
+]);
 
 function sandbox(scenario: typeof scenarios[number]) {
   const root = mkdtempSync(join(tmpdir(), `dori-review-qa-${scenario.name}-`));
@@ -19,6 +24,10 @@ function sandbox(scenario: typeof scenarios[number]) {
   const home = join(root, "home");
   mkdirSync(bin);
   mkdirSync(home);
+  const lane = join(root, "lanes", "ci economy");
+  mkdirSync(lane, { recursive: true });
+  const model = scenario.commandLine ? "fixture/selected-model" : "default";
+  const fixed = scenario.commandLine ? ["--lane", "ci economy", "", "owner's choice", "$HOME;$(exit 99)"] : [];
   const gh = join(bin, "gh");
   writeFileSync(gh, `#!${process.execPath}
 import { appendFileSync } from "node:fs";
@@ -29,10 +38,17 @@ if (JSON.stringify(argv) !== JSON.stringify(["pr", "view", "9001", "--repo", "sa
 }
 console.log(JSON.stringify({ headRefOid: ${JSON.stringify(sha)} }));
 `);
-  const agent = join(bin, "agent");
+  const agent = join(bin, scenario.commandLine ? "reviewer omo" : "reviewer-omo");
   writeFileSync(agent, `#!${process.execPath}
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 const argv = process.argv.slice(2);
+const fixed = ${JSON.stringify(fixed)};
+if (JSON.stringify(argv.splice(0, fixed.length)) !== JSON.stringify(fixed)) {
+  console.error("sandbox agent received corrupted fixed arguments"); process.exit(94);
+}
+if (argv[0] !== "-p" || (argv.includes("--model") ? argv[argv.indexOf("--model") + 1] : "default") !== ${JSON.stringify(model)}) {
+  console.error("sandbox agent received the wrong mode or model"); process.exit(95);
+}
 const index = argv.indexOf("--session");
 const session = index < 0 ? undefined : argv[index + 1];
 if (!session || argv.includes("--no-session") || argv.includes("--continue") || argv.includes("--resume")) {
@@ -55,18 +71,20 @@ process.stderr.write(${JSON.stringify(scenario.stderr)});
   chmodSync(gh, 0o755);
   chmodSync(agent, 0o755);
   const env = {
-    PATH: bin, HOME: root, DORI_HOME: home, DORI_AGENT_CMD: agent,
+    PATH: bin, HOME: root, DORI_HOME: home,
+    DORI_AGENT_CMD: scenario.commandLine ? [process.execPath, agent, ...fixed].map(shq).join(" ") : agent,
+    HC_TERMINAL_ID: "lane-fixture",
     DORI_TELEMETRY: "0", DORI_REVIEW_TIMEOUT_MIN: "1",
   };
   const run = join(root, "run-review");
   writeFileSync(run, `#!${process.execPath}
-const child = Bun.spawn(${JSON.stringify([process.execPath, cli, "review", pr])}, {
-  env: ${JSON.stringify(env)}, stdin: "ignore", stdout: "inherit", stderr: "inherit",
+const child = Bun.spawn(${JSON.stringify([process.execPath, cli, "review", pr, ...(scenario.commandLine ? ["--model", model] : [])])}, {
+  cwd: ${JSON.stringify(lane)}, env: ${JSON.stringify(env)}, stdin: "ignore", stdout: "inherit", stderr: "inherit",
 });
 process.exit(await child.exited);
 `);
   chmodSync(run, 0o755);
-  return { root, home, run };
+  return { root, home, run, model };
 }
 
 async function invoke(run: string) {
@@ -95,26 +113,26 @@ function artifacts(home: string) {
   });
 }
 
-test.each(scenarios)("real CLI $name retains streams and agent-written sessions across repeated invocations", async (scenario) => {
+test.each(scenarios)("real CLI $name commandLine=$commandLine retains streams and agent-written sessions across repeated invocations", async (scenario) => {
   const fixture = sandbox(scenario);
   try {
     const first = await invoke(fixture.run);
+    expect(first.code, first.stderr).toBe(scenario.code);
     const kept = artifacts(fixture.home);
 
-    expect(first.code).toBe(scenario.code);
     expect(kept).toHaveLength(scenario.attempts);
     for (const artifact of kept) {
       expect(artifact.stdout).toBe(scenario.stdout);
       expect(artifact.stderr).toBe(scenario.stderr);
       expect(artifact.result).toEqual({
-        pr, sha, attempt: artifact.session.invocation, model: "default", session: join(artifact.path, "session.jsonl"),
+        pr, sha, attempt: artifact.session.invocation, model: fixture.model, session: join(artifact.path, "session.jsonl"),
         startedAt: expect.any(Number), finishedAt: expect.any(Number), code: 0, timedOut: false,
       });
       expect(Number.isFinite(artifact.result.startedAt)).toBe(true);
       expect(artifact.result.finishedAt).toBeGreaterThanOrEqual(artifact.result.startedAt);
       expect(artifact.session).toEqual({
         source: "sandbox-agent", invocation: artifact.result.attempt, session: artifact.result.session,
-        model: "default", prompt: expect.stringContaining(`exactly head ${sha}`),
+        model: fixture.model, prompt: expect.stringContaining(`exactly head ${sha}`),
       });
       expect(artifact.session.prompt).toContain(pr);
       expect(first.stderr).toContain(join(artifact.path, "result.json"));
@@ -123,7 +141,7 @@ test.each(scenarios)("real CLI $name retains streams and agent-written sessions 
     if (scenario.code === 0) {
       expect(first.stdout).toBe(`REVIEW ${pr} head=${sha} verdict=CLEAR review=${join(fixture.home, "receipts", `${key}.md`)}\n`);
       expect(JSON.parse(readFileSync(receipt, "utf8"))).toEqual({
-        pr, sha, verdict: "CLEAR", model: "default", at: expect.any(Number),
+        pr, sha, verdict: "CLEAR", model: fixture.model, at: expect.any(Number),
         summary: scenario.stdout.trim(), review: join(fixture.home, "receipts", `${key}.md`),
       });
       expect(readFileSync(join(fixture.home, "receipts", `${key}.md`), "utf8")).toBe(scenario.stdout);

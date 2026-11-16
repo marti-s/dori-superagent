@@ -135,6 +135,8 @@ dori done fix-flaky-login --abandon --note 'wedged, restarted as fix-flaky-login
 
 `dori send <lead|duty|key|pane> --text '...'` delivers a message to a pane, or queues it when the pane is busy. `dori role <lead|duty> [PANE]` registers a terminal by hand when you did not use `dori up` (default: `HC_TERMINAL_ID`, the hc terminal it runs in). A target is a role, an open lane key, or an hc terminal address such as `t5`. `--text` can be left off to read the message from stdin. The commands the agents see are rendered with the full path to `src/cli.ts` and `DORI_HOME` set, so `dori` does not need to be on their PATH. Environment: `DORI_HOME` (state directory, default `~/.dori`), `DORI_AGENT_CMD` (default `omo`), `DORI_HERDR_APP` (path to `herdr-app`, default `~/.local/bin/herdr-app`), `DORI_HERDR_SPACE` (see below), `DORI_CMD` (how the agents are told to call dori).
 
+For `dori review`, `DORI_AGENT_CMD` accepts an executable followed by fixed arguments, with single quotes, double quotes and backslash escapes. Quote paths or arguments containing spaces, for example `DORI_AGENT_CMD='"/opt/lane tools/reviewer-omo" --account "review lane"'`. The review flags, including an explicit `--model`, follow those fixed arguments. Review launches the executable directly: variables, substitutions, globs and shell operators remain literal; use an executable wrapper for shell setup. Empty commands and malformed quoting are refused.
+
 ### Running on Herdr
 
 dori drives `~/.local/bin/hc` (herdr-core) for every terminal and uses `herdr-app` only to name tabs. With Herdr and its core server running:

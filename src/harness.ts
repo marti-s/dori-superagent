@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { cpus, freemem, loadavg, totalmem } from "node:os";
 import { join, resolve } from "node:path";
-import { CommandError, DeliveryUncertain, shq, spawnExec, type AgentStatus, type Exec, type TerminalBackend } from "./terminal.ts";
+import { CommandError, DeliveryUncertain, parseAgentCommand, shq, spawnExec, type AgentStatus, type Exec, type TerminalBackend } from "./terminal.ts";
 import { KEY_RE, reservedKey, Store, type DeliveryAttempt, type HostLoad, type Lane, type QueuedMessage, type Role } from "./store.ts";
 import { Telemetry, type MergeOutcome, type Usage } from "./telemetry.ts";
 import { HerdrCore } from "./herdr-core.ts";
@@ -512,9 +512,9 @@ export async function review(d: Deps, prId: string, model?: string): Promise<{ v
   for (let attempt = 1; attempt <= 2 && !found; attempt++) {
     const directory = d.store.createReviewAttempt(pr.id, sha);
     const session = join(directory, "session.jsonl");
-    const argv = ["-p", "--session", session, ...(model ? ["--model", model] : []), text];
+    const agent = parseAgentCommand(d.agentCmd);
     const startedAt = d.now();
-    const res = await d.exec(d.agentCmd, argv, { timeoutMs: d.reviewTimeoutMs });
+    const res = await d.exec(agent.executable, [...agent.args, "-p", "--session", session, ...(model ? ["--model", model] : []), text], { timeoutMs: d.reviewTimeoutMs });
     const diagnostics = d.store.saveReviewAttempt(directory, {
       pr: pr.id, sha, attempt, model: model ?? "default", session,
       startedAt, finishedAt: d.now(), code: res.code, timedOut: res.timedOut ?? false,
