@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { agentCommandArgv } from "../src/agent-command.ts";
 import { shq } from "../src/delivery.ts";
 import { Refusal } from "../src/refusal.ts";
@@ -29,3 +29,22 @@ test.each(["", " \t\n", "'' --arg", '""', "omo 'unfinished", 'omo "unfinished', 
     expect(() => agentCommandArgv(raw)).toThrow(Refusal);
   },
 );
+
+test.each([
+  { name: "another message", failure: new Error("executable lookup denied") },
+  { name: "another error type", failure: new TypeError("bin path is too long") },
+  { name: "a non-Error value", failure: { message: "bin path is too long" } },
+])("preserves unrelated executable lookup failures: $name", ({ failure }) => {
+  const lookup = spyOn(Bun, "which").mockImplementation(() => {
+    throw failure;
+  });
+  let result: unknown;
+  try {
+    result = agentCommandArgv("omo --flag");
+  } catch (error) {
+    result = error;
+  } finally {
+    lookup.mockRestore();
+  }
+  expect(result).toBe(failure);
+});
