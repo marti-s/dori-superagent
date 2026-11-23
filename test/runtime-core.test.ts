@@ -105,7 +105,9 @@ describe("Runtimes registry", () => {
       submitTyped: never,
       typeIntoShell: never,
       keys: never,
+      stop: never,
       close: never,
+      retire: never,
     };
   };
   const counting = () => {

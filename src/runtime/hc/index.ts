@@ -16,7 +16,8 @@ import type {
 import { nameTab } from "./app.ts";
 import { deliver, keys, read, typeIntoShell } from "./deliver.ts";
 import { probe } from "./probe.ts";
-import { close, create, list, selfRef, start, tabName } from "./sessions.ts";
+import { retire } from "./retire.ts";
+import { close, create, list, selfRef, start, stop, tabName } from "./sessions.ts";
 import { inheritedEnv, placement } from "./space.ts";
 
 export type HcRuntimeOptions = {
@@ -97,7 +98,15 @@ export class HcRuntime implements SessionRuntime {
     return keys(this.exec, ref.id, names);
   }
 
+  stop(ref: SessionRef): Promise<void> {
+    return stop(this.exec, ref.id);
+  }
+
   close(ref: SessionRef): Promise<void> {
     return close(this.exec, ref.id, this.sleep, this.log);
+  }
+
+  retire(ref: SessionRef, laneKey: string): Promise<string> {
+    return retire(this.exec, this.app, ref.id, laneKey, this.sleep, this.log);
   }
 }

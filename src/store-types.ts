@@ -18,7 +18,11 @@ export type Lane = {
   lastActivityAt: number;
   nudges: number;
   final?: { text: string; evidence: string[]; at: number };
-  log: { at: number; kind: "start" | "report" | "ready" | "nudge" | "done" | "lost"; text: string }[];
+  /** When the lane became done or lost; its terminal and tab are retired a configured delay later. */
+  closedAt?: number;
+  /** When the duty loop retired the lane's terminal and tab (or decided to leave them). */
+  retiredAt?: number;
+  log: { at: number; kind: "start" | "report" | "ready" | "nudge" | "done" | "lost" | "retired"; text: string }[];
 };
 
 /** The sessions `dori up` opens; roles.json maps each to a ref string (an hc terminal address, `t7`). */

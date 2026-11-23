@@ -1,9 +1,10 @@
 import { DeliveryUncertain, failureDetail } from "./delivery.ts";
 import { type Deps, prompt } from "./harness.ts";
-import { runHook } from "./hooks.ts";
 import { flushInbox, sendOrThrow, tellLead } from "./inbox.ts";
+import { markLost } from "./lanes.ts";
 import { Refusal } from "./refusal.ts";
 import { refText } from "./refs.ts";
+import { retireClosedLanes } from "./retire.ts";
 import type { Lane } from "./store-types.ts";
 
 export const NUDGE_MINUTES = [10, 20, 40] as const;
@@ -13,7 +14,10 @@ export type DutyEvent = { lane?: string; pane?: string; action: string; detail?:
 /** An open lane the duty loop watches. */
 const watched = (lane: Lane): boolean => lane.status === "working" || lane.status === "waiting";
 
-/** One proactive pass: flush inboxes of panes that became idle, nudge silent lanes, escalate, detect lost panes. */
+/**
+ * One proactive pass: flush inboxes of panes that became idle, nudge silent lanes, escalate, detect lost panes, and
+ * retire the terminals of lanes closed a while ago.
+ */
 export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
   // Kill switch: a stopped duty loop delivers, nudges and escalates nothing. Queued messages wait for the resume.
   const stop = d.store.stop("duty");
@@ -52,11 +56,7 @@ export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
       if (lane === undefined || !watched(lane) || lane.sessionRef.id !== listed.sessionRef.id) continue;
       const now = d.now();
       if (st === "gone") {
-        lane.status = "lost";
-        lane.log.push({ at: now, kind: "lost", text: "pane disappeared without READY" });
-        d.store.saveLane(lane);
-        void runHook(d, "onLost", { key: lane.key, text: "pane disappeared without READY", evidence: "" });
-        await tellLead(d, `[LOST ${lane.key}] pane ${refText(lane.sessionRef)} closed without a final answer`, "duty");
+        await markLost(d, lane);
         events.push({ lane: lane.key, action: "lost" });
         continue;
       }
@@ -93,6 +93,7 @@ export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
       events.push({ lane: listed.key, action: "lane-failed", detail: failureDetail(e) });
     }
   }
+  await retireClosedLanes(d, events);
   const count = (pred: (a: string) => boolean) => events.filter((e) => pred(e.action)).length;
   d.usage.touch();
   d.usage.duty({

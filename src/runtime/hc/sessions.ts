@@ -118,6 +118,15 @@ export async function list(exec: Exec, group: string | undefined): Promise<Sessi
   return out;
 }
 
+/** Ends the terminal's program and keeps its record; an unknown terminal is already stopped. */
+export async function stop(exec: Exec, id: string): Promise<void> {
+  try {
+    await hcCall(exec, ["kill", id]);
+  } catch (e) {
+    if (!isKind(e, "not_found")) throw e;
+  }
+}
+
 /**
  * Kill, then remove the record. A program that takes a moment to die makes `rm` answer `live`: retried 5 times
  * 200 ms apart; still live after that is logged (the kill was sent), not thrown. An unknown terminal is already closed.

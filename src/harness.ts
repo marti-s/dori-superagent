@@ -28,6 +28,8 @@ export type Deps = {
   readonly agentCmd: string;
   /** How long one reviewer run may take before it is killed and the review fails. */
   readonly reviewTimeoutMs: number;
+  /** How long after a lane is done or lost the duty loop retires its terminal and tab; 0 never retires them. */
+  readonly tabCloseDelayMs: number;
   readonly doriCmd: string;
   readonly host: () => HostLoad;
   readonly usage: Usage;
@@ -55,6 +57,7 @@ export const defaultDeps = (): Deps => {
     now: Date.now,
     agentCmd: process.env["DORI_AGENT_CMD"] ?? "omo",
     reviewTimeoutMs: reviewTimeoutMinutes(process.env["DORI_REVIEW_TIMEOUT_MIN"]) * 60_000,
+    tabCloseDelayMs: tabCloseMinutes(process.env["DORI_TAB_CLOSE_MIN"]) * 60_000,
     doriCmd: process.env["DORI_CMD"] ?? `DORI_HOME=${shq(store.root)} bun ${shq(CLI)}`,
     host: () => ({ load1: loadavg()[0] ?? 0, cores: cpus().length, memFreePct: memFreePct() }),
     usage: new Telemetry(store.root),
@@ -62,6 +65,16 @@ export const defaultDeps = (): Deps => {
 };
 
 const REVIEW_TIMEOUT_MIN = 25;
+const TAB_CLOSE_MIN = 15;
+
+/** DORI_TAB_CLOSE_MIN as minutes, 0 to never close; unset means 15, a negative or non-number is refused. */
+export function tabCloseMinutes(raw: string | undefined): number {
+  if (raw === undefined || raw === "") return TAB_CLOSE_MIN;
+  const minutes = Number(raw);
+  if (!Number.isFinite(minutes) || minutes < 0)
+    throw new Refusal(`DORI_TAB_CLOSE_MIN must be 0 or a positive number of minutes, not ${JSON.stringify(raw)}`);
+  return minutes;
+}
 
 /** DORI_REVIEW_TIMEOUT_MIN as a positive number of minutes; unset means 25, anything else is refused. */
 export function reviewTimeoutMinutes(raw: string | undefined): number {

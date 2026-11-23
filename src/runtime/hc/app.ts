@@ -59,3 +59,17 @@ export async function nameTab(
     log(`dori: could not name the app tab of ${terminal} "${name}": ${messageOf(e)}`);
   }
 }
+
+/**
+ * Closes a tab; undefined when it is closed, else why not. The window drops a tab whose last terminal hc removed, so
+ * a refused close of a tab it no longer lists is done.
+ */
+export async function closeTab(exec: Exec, app: string, tab: string): Promise<string | undefined> {
+  const closed = await exec(app, ["do", "tab.close", "--id", tab, "--confirmed", "true"]);
+  if (closed.code === 0) return undefined;
+  const still = await tabs(exec, app).then(
+    (all) => all.some((t) => t.id === tab),
+    () => true,
+  );
+  return still ? (closed.stderr || closed.stdout).trim() || `exit ${closed.code}` : undefined;
+}

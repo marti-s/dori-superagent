@@ -13,6 +13,8 @@ export type FakeTerminal = {
   turn: number;
   foreground: { name: string; argv: string[]; pid: number } | null;
   name?: string;
+  /** The argv the terminal was started with, as `hc get` reports it. */
+  argv?: string[];
   labels: Record<string, string>;
   screen?: string;
   /** Terminal width, as `hc get` reports it. */
@@ -37,6 +39,8 @@ export type FakeKnobs = {
   readError?: string;
   /** The Herdr window: `missing` = no herdr-app binary, `fail` = every call exits 1, `late` = the next `ls` lists no tab yet, `blind` = no `ls` ever lists one. */
   app?: "missing" | "fail" | "late" | "blind";
+  /** The window drops a terminal from its tab as soon as hc removes it, as the real one does. */
+  windowDropsRemoved?: boolean;
 };
 
 const EXIT: Readonly<Record<string, number>> = {
@@ -82,6 +86,7 @@ export class FakeHc {
   readonly terminals = new Map<string, FakeTerminal>();
   /** The Herdr window's tabs by the terminal each holds, and every herdr-app call made. */
   readonly tabs = new Map<string, { id: string; name: string }>();
+  readonly closedTabs = new Set<string>();
   readonly appCalls: string[][] = [];
   /** The binary every herdr-app call was made with. */
   readonly appBins = new Set<string>();
@@ -135,16 +140,23 @@ export class FakeHc {
     if (this.knobs.app === "fail") return { code: 1, stdout: "", stderr: "window closed\n" };
     const [verb, action, , id, , name] = argv;
     if (verb === "ls") {
-      const shown = this.knobs.app === undefined ? [...this.tabs] : [];
+      const hidden = this.knobs.app === "late" || this.knobs.app === "blind";
       if (this.knobs.app === "late") delete this.knobs.app;
-      const tabs = shown.map(([terminal, tab]) => ({ ...tab, terminals: [{ terminal, pane: `p-${terminal}` }] }));
-      return ok({ spaces: [{ id: "sp", name: "work", tabs }] });
+      const tabs = new Map<string, { id: string; name: string; terminals: { terminal: string }[] }>();
+      for (const [terminal, tab] of hidden ? [] : this.tabs) {
+        const listed = tabs.get(tab.id) ?? { ...tab, terminals: [] };
+        listed.terminals.push({ terminal });
+        tabs.set(tab.id, listed);
+      }
+      return ok({ spaces: [{ id: "sp", name: "work", tabs: [...tabs.values()] }] });
     }
-    const held = [...this.tabs].find(([, tab]) => tab.id === id);
-    if (verb !== "do" || held === undefined) return { code: 1, stdout: "", stderr: "no such tab\n" };
-    if (action === "tab.rename") held[1].name = name ?? "";
-    else if (action === "tab.close") this.tabs.delete(held[0]);
-    else return { code: 1, stdout: "", stderr: `unknown action ${action}\n` };
+    const held = [...this.tabs].filter(([, tab]) => tab.id === id);
+    if (verb !== "do" || held.length === 0) return { code: 1, stdout: "", stderr: "no such tab\n" };
+    if (action === "tab.rename") for (const [, tab] of held) tab.name = name ?? "";
+    else if (action === "tab.close") {
+      for (const [terminal] of held) this.tabs.delete(terminal);
+      this.closedTabs.add(id ?? "");
+    } else return { code: 1, stdout: "", stderr: `unknown action ${action}\n` };
     return ok({});
   }
 
@@ -164,7 +176,10 @@ export class FakeHc {
     while (this.terminals.has(id)) id = `t${this.next++}`;
     this.terminals.set(
       id,
-      terminal({ labels, status: null, reported: false, turn: 0, ...(name === undefined ? {} : { name }) }),
+      terminal({
+        ...{ labels, status: null, reported: false, turn: 0, argv: args.slice(args.indexOf("--") + 1) },
+        ...(name === undefined ? {} : { name }),
+      }),
     );
     this.tabs.set(id, { id: `tb-${id}`, name: String(this.tabs.size + 1) });
     return ok({ address: id, state: "live", labels });
@@ -214,6 +229,7 @@ export class FakeHc {
       return fail("live", `${id} is still running`);
     }
     this.terminals.delete(id);
+    if (this.knobs.windowDropsRemoved) this.tabs.delete(id);
     return ok({ removed: id });
   }
 }

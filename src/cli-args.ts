@@ -22,7 +22,7 @@ export const USAGE = `dori - a proactive multi-session harness on hc (herdr-core
   dori backlog import <owner/repo> [--label dori] [--cwd DIR]   open labelled issues -> items
   dori review <owner/repo#N> [--model M]      fresh omo reviewer at the exact head -> receipt
   dori merge <owner/repo#N> [--dry-run]       CLEAR receipt at head + green checks -> squash merge
-  dori done <key>                             lead closes a READY lane
+  dori done <key> [--abandon --note WHY]      lead closes a READY lane, or abandons one that never reported READY
   dori status
 
 --text may be omitted to read the message from stdin.
@@ -34,7 +34,7 @@ export type Args = { pos: string[]; flags: Map<string, string[]> };
 
 // Flags that never take a value. Every other flag takes the next argument verbatim, even one starting with "--", so a
 // relayed value such as `--from "$SENDER"` or `--text "$MSG"` can never turn into a flag like --to-shell (#66).
-const BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["once", "force", "dry-run", "to-shell", "help"]);
+const BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["once", "force", "dry-run", "to-shell", "abandon", "help"]);
 
 export function parse(argv: readonly string[]): Args {
   const pos: string[] = [];

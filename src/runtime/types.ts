@@ -68,8 +68,15 @@ export interface SessionRuntime {
   submitTyped(ref: SessionRef, into: AgentIdentity): Promise<SubmitResult>;
   typeIntoShell(ref: SessionRef, text: string): Promise<boolean>;
   keys(ref: SessionRef, keys: readonly Key[]): Promise<void>;
+  /** Ends the session's program and keeps its record, so its screen stays readable until it is retired: `hc kill`. */
+  stop(ref: SessionRef): Promise<void>;
   /** Ends the session and removes its record: `hc kill`, then `hc rm`. */
   close(ref: SessionRef): Promise<void>;
+  /**
+   * Removes a finished lane's session and closes the Herdr tab that held it, touching only the terminal Dori started
+   * for `laneKey` and never a tab another live terminal still uses. Returns one line saying what it did.
+   */
+  retire(ref: SessionRef, laneKey: string): Promise<string>;
 }
 
 /** A local hc terminal address. hc numbers terminals in base 36 (`t7`, `t1b`, `t2h`); another machine's `<machine>/<address>` is not a ref. */

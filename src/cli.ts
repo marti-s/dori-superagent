@@ -130,8 +130,13 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
       console.log(await mergeGate(d, need(x, "PR"), { dryRun: one(a, "dry-run") === "true" }));
       return 0;
     case "done":
-      await done(d, need(x, "lane key"));
-      console.log(`DONE ${x}`);
+      if (a.flags.has("abandon")) {
+        await done(d, need(x, "lane key"), { note: one(a, "note") ?? "" });
+        console.log(`DONE ${x} abandoned`);
+      } else {
+        await done(d, need(x, "lane key"));
+        console.log(`DONE ${x}`);
+      }
       return 0;
     case "status":
       status(d);

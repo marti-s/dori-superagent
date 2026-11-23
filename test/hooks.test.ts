@@ -92,7 +92,9 @@ describe("lifecycle hooks", () => {
     w.panes.delete(lane.paneId);
     expect(await dutyTick(d)).toContainEqual({ lane: "gone-lane", action: "lost" });
     await hooksSettled();
-    expect(hookCalls(w, "my-hook")).toEqual([["my-hook", "lost", "gone-lane", "pane disappeared without READY"]]);
+    expect(hookCalls(w, "my-hook")).toEqual([
+      ["my-hook", "lost", "gone-lane", "terminal finished or disappeared without READY"],
+    ]);
     expect(d.store.lane("gone-lane")!.status).toBe("lost");
   });
 
