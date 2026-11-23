@@ -19,10 +19,10 @@ function renderPrompt(d: Deps, name: string): string {
 /** Opens lead, duty, the duty loop and the hourly loop as four hc terminals labelled with this home's group, and registers all four roles. */
 export async function up(d: Deps, cwd: string): Promise<void> {
   const rt = d.runtimes.default;
-  const env = { DORI_HOME: d.store.root };
+  const env = { ...d.sessionEnv, DORI_HOME: d.store.root };
   const agent = (name: string) => `${d.agentCmd} --append-system-prompt ${shq(renderPrompt(d, name))}`;
   const group = groupId(d.store.root);
-  const lead = await openSession(rt, { name: "dori", role: "lead", cwd, env: {}, group }, agent("lead.md"));
+  const lead = await openSession(rt, { name: "dori", role: "lead", cwd, env: d.sessionEnv, group }, agent("lead.md"));
   d.store.setRole("lead", lead);
   const duty = await openSession(rt, { name: "duty", role: "duty", cwd, env, group }, agent("duty.md"));
   d.store.setRole("duty", duty);

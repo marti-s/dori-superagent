@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { Refusal } from "../src/refusal.ts";
 import { main } from "../src/cli.ts";
+import { up } from "../src/cli-up.ts";
 import { dutyTick } from "../src/duty.ts";
+import { sessionEnv } from "../src/harness.ts";
 import { done, ready, startLane } from "../src/lanes.ts";
 import { sref } from "./fake.ts";
 import { setup } from "./harness-setup.ts";
@@ -116,6 +118,46 @@ describe("lanes", () => {
     expect(await main(["done", "cli-lost", "--abandon", "--note", "gave up"], d)).toBe(0);
     expect(d.store.lane("cli-lost")?.status).toBe("done");
     await expect(main(["done", "cli-lost", "--abandon"], d)).rejects.toThrow("--abandon needs a --note");
+  });
+});
+
+describe("the environment Dori's sessions start with", () => {
+  const envOf = (argv: readonly string[] | undefined): string[] =>
+    argv === undefined ? [] : argv.slice(argv.indexOf("env") + 1, -1);
+
+  test("sessionEnv keeps the caller's DORI_* settings and PATH, and never its DORI_LANE", () => {
+    const caller = { DORI_HOME: "/h", DORI_AGENT_CMD: "omo-x --fast", DORI_LANE: "parent", PATH: "/a:/b", HOME: "/u" };
+    expect(sessionEnv({ ...caller, DORI_UNSET: undefined })).toEqual({
+      DORI_HOME: "/h",
+      DORI_AGENT_CMD: "omo-x --fast",
+      PATH: "/a:/b",
+    });
+  });
+
+  test("a lane and the dori up sessions get those settings; the lane's own key and home win", async () => {
+    const { w, d, brief } = setup();
+    const caller = { DORI_HOME: "/elsewhere", DORI_AGENT_CMD: "omo-x --fast", DORI_TELEMETRY: "0", PATH: "/a:/b" };
+    const withSettings = { ...d, sessionEnv: caller };
+    await startLane(withSettings, "fix-login", brief);
+    expect(envOf(w.hcCalls("run").at(-1))).toEqual([
+      `DORI_HOME=${d.store.root}`,
+      "DORI_AGENT_CMD=omo-x --fast",
+      "DORI_TELEMETRY=0",
+      "PATH=/a:/b",
+      "DORI_LANE=fix-login",
+    ]);
+    await up(withSettings, "/w");
+    const roles = w.hcCalls("run").slice(-4);
+    expect(envOf(roles[0])).toEqual([
+      "DORI_HOME=/elsewhere",
+      "DORI_AGENT_CMD=omo-x --fast",
+      "DORI_TELEMETRY=0",
+      "PATH=/a:/b",
+    ]);
+    for (const argv of roles.slice(1)) {
+      expect(envOf(argv)).toContain(`DORI_HOME=${d.store.root}`);
+      expect(envOf(argv)).toContain("DORI_AGENT_CMD=omo-x --fast");
+    }
   });
 });
 

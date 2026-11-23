@@ -38,7 +38,7 @@ export async function startLane(
   const kickoff = `Read your brief at ${briefPath} and execute it. Your lane key is ${key}.`;
   const ref = await openSession(
     rt,
-    { name: key, role: "lane", cwd, env: { DORI_LANE: key, DORI_HOME: d.store.root }, group },
+    { name: key, role: "lane", cwd, env: { ...d.sessionEnv, DORI_LANE: key, DORI_HOME: d.store.root }, group },
     `${d.agentCmd} ${shq(kickoff)}`,
   );
 

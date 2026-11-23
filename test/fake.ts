@@ -197,6 +197,7 @@ export class World {
       exec: this.exec,
       now: () => this.clock,
       agentCmd: "omo",
+      sessionEnv: {},
       reviewTimeoutMs: 25 * 60_000,
       tabCloseDelayMs: 15 * 60_000,
       doriCmd: "dori",

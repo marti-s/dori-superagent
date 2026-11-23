@@ -38,14 +38,3 @@ export async function placement(
   const id = str(labels["herdr.space"]);
   return id === undefined ? undefined : { id, name: nameIn(labels["where"]) ?? id };
 }
-
-/** The caller's own settings a new terminal needs: hc's server does not inherit the caller's environment. */
-export function inheritedEnv(env: Readonly<Record<string, string | undefined>>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(env)) {
-    // DORI_LANE names the caller's own lane, not a setting: a session opened from a lane is never that lane.
-    if (value === undefined || key === "DORI_LANE") continue;
-    if (key === "PATH" || key.startsWith("DORI_")) out[key] = value;
-  }
-  return out;
-}

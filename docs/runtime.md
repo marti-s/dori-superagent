@@ -73,7 +73,7 @@ Every `hc` call carries `--json`.
 
 ## Placement and tab names
 
-hc's server does not inherit the caller's environment, so a new terminal is started with the caller's `DORI_*` settings and `PATH` under the session's own variables (`DORI_HOME`, and `DORI_LANE` for a lane). The caller's `DORI_LANE` is never passed on: it names the caller's own lane.
+hc's server does not inherit the caller's environment, so the harness starts every terminal it opens with the caller's `DORI_*` settings and `PATH` under the session's own variables (`DORI_HOME`, and `DORI_LANE` for a lane). The caller's `DORI_LANE` is never passed on: it names the caller's own lane. The adapter itself adds nothing, and the dori-mode skill passes its lanes only the variables it chose.
 
 Every terminal Dori opens joins one space of the Herdr app, the first that applies:
 

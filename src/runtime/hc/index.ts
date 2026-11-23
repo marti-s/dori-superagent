@@ -18,7 +18,7 @@ import { deliver, keys, read, typeIntoShell } from "./deliver.ts";
 import { probe } from "./probe.ts";
 import { retire } from "./retire.ts";
 import { close, create, list, selfRef, start, stop, tabName } from "./sessions.ts";
-import { inheritedEnv, placement } from "./space.ts";
+import { placement } from "./space.ts";
 
 export type HcRuntimeOptions = {
   readonly env?: Readonly<Record<string, string | undefined>>;
@@ -50,13 +50,12 @@ export class HcRuntime implements SessionRuntime {
   }
 
   /**
-   * The terminal carries the caller's own `DORI_*` settings and PATH under the spec's env, and joins the Herdr app
-   * space of `DORI_HERDR_SPACE` or of the terminal Dori runs in. A terminal placed in a space has its tab named.
+   * The terminal joins the Herdr app space of `DORI_HERDR_SPACE` or of the terminal Dori runs in. A terminal placed
+   * in a space has its tab named.
    */
   async create(spec: CreateSpec): Promise<SessionRef> {
     const space = await placement(this.exec, this.env);
-    const env = { ...inheritedEnv(this.env), ...spec.env };
-    const ref = await create(this.exec, { ...spec, env }, this.env["SHELL"] || "sh", space);
+    const ref = await create(this.exec, spec, this.env["SHELL"] || "sh", space);
     if (space !== undefined) await nameTab(this.exec, this.app, ref.id, tabName(spec), this.sleep, this.log);
     return ref;
   }

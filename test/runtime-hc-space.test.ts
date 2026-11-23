@@ -57,27 +57,11 @@ describe("placement in a Herdr app space", () => {
 });
 
 describe("the environment of a new terminal", () => {
-  test("carries the caller's DORI_* settings and PATH, never its DORI_LANE; the spec's own env wins", async () => {
-    const env = {
-      DORI_HOME: "/caller/home",
-      DORI_AGENT_CMD: "/bin/omo-claude --fast",
-      DORI_TELEMETRY: "0",
-      DORI_LANE: "parent-lane",
-      PATH: "/a:/b",
-      HOME: "/h",
-      SHELL: "/bin/zsh",
-    };
-    const { fake, rt } = rig({}, env);
-    await rt.create({ ...lane, env: { DORI_HOME: "/lane/home", DORI_LANE: "lane-k" } });
+  test("is the spec's env and nothing else: the adapter adds none of its own caller's variables", async () => {
+    const { fake, rt } = rig({}, { DORI_HOME: "/caller/home", DORI_ALLOW: "1", PATH: "/a:/b", SHELL: "/bin/zsh" });
+    await rt.create({ ...lane, env: { DORI_LANE: "lane-k" } });
     const run = fake.calls.find((c) => c[0] === "run") ?? [];
-    expect(run.slice(run.indexOf("env") + 1)).toEqual([
-      "DORI_HOME=/lane/home",
-      "DORI_AGENT_CMD=/bin/omo-claude --fast",
-      "DORI_TELEMETRY=0",
-      "PATH=/a:/b",
-      "DORI_LANE=lane-k",
-      "/bin/zsh",
-    ]);
+    expect(run.slice(run.indexOf("env") + 1)).toEqual(["DORI_LANE=lane-k", "/bin/zsh"]);
   });
 });
 

@@ -32,6 +32,8 @@ export type Deps = {
   readonly formaQueueBootstrap?: FormaQueueBootstrap;
   readonly now: () => number;
   readonly agentCmd: string;
+  /** The caller's own settings every session Dori opens is started with (see sessionEnv). */
+  readonly sessionEnv: Readonly<Record<string, string>>;
   /** How long one reviewer run may take before it is killed and the review fails. */
   readonly reviewTimeoutMs: number;
   /** How long after a lane is done or lost the duty loop retires its terminal and tab; 0 never retires them. */
@@ -67,6 +69,7 @@ export const defaultDeps = (): Deps => {
     ...(formaQueueBootstrap === undefined ? {} : { formaQueueBootstrap }),
     now: Date.now,
     agentCmd: process.env["DORI_AGENT_CMD"] ?? "omo",
+    sessionEnv: sessionEnv(process.env),
     reviewTimeoutMs: reviewTimeoutMinutes(process.env["DORI_REVIEW_TIMEOUT_MIN"]) * 60_000,
     tabCloseDelayMs: tabCloseMinutes(process.env["DORI_TAB_CLOSE_MIN"]) * 60_000,
     doriCmd: process.env["DORI_CMD"] ?? `DORI_HOME=${shq(store.root)} bun ${shq(CLI)}`,
@@ -74,6 +77,20 @@ export const defaultDeps = (): Deps => {
     usage: new Telemetry(store.root),
   };
 };
+
+/**
+ * The caller's `DORI_*` settings and PATH, for the terminals Dori opens: hc's server does not inherit the caller's
+ * environment, so a lane, or the hourly loop that starts lanes, would otherwise run with none of them.
+ */
+export function sessionEnv(env: Readonly<Record<string, string | undefined>>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    // DORI_LANE names the caller's own lane, not a setting: a session opened from a lane is never that lane.
+    if (value === undefined || key === "DORI_LANE") continue;
+    if (key === "PATH" || key.startsWith("DORI_")) out[key] = value;
+  }
+  return out;
+}
 
 const REVIEW_TIMEOUT_MIN = 25;
 const TAB_CLOSE_MIN = 15;
