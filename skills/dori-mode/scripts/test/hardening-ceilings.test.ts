@@ -5,7 +5,7 @@ import { loadConfig } from "../src/config.ts";
 import { launchLane } from "../src/launch.ts";
 import type { Lane } from "../src/registry.ts";
 import { Reports } from "../src/reports.ts";
-import { depsFor, fakeClock, newWorld, withState } from "./fakes.ts";
+import { depsFor, fakeClock, hcCreated, newWorld, withState } from "./fakes.ts";
 
 const T0 = Date.parse("2026-01-01T12:00:00Z");
 
@@ -38,13 +38,7 @@ test("launch persists default and per-lane ceilings with explicit override prece
       {
         ...deps,
         run: async (argv, opts) =>
-          argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create"
-            ? {
-                code: 0,
-                out: JSON.stringify({ result: { root_pane: { pane_id: "qa:p1" }, tab_id: "qa:t1" } }),
-                err: "",
-              }
-            : original(argv, opts),
+          argv[0] === "hc" && argv[2] === "run" ? hcCreated(world, "qa:p1") : original(argv, opts),
       },
       {
         key: lane.key,
@@ -70,7 +64,8 @@ test("a launch budget field passed as undefined keeps the configured ceiling; on
   try {
     const brief = join(state.dir, "brief.md");
     writeFileSync(brief, "Do the fixture work.");
-    const deps = depsFor(newWorld(), fakeClock(T0), state.dir, {
+    const world = newWorld();
+    const deps = depsFor(world, fakeClock(T0), state.dir, {
       supervision: { defaults: { wallMinutes: 240, tokens: 1000, costUsd: 5 } },
     });
     const original = deps.run;
@@ -78,13 +73,7 @@ test("a launch budget field passed as undefined keeps the configured ceiling; on
       {
         ...deps,
         run: async (argv, opts) =>
-          argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create"
-            ? {
-                code: 0,
-                out: JSON.stringify({ result: { root_pane: { pane_id: "qa:p1" }, tab_id: "qa:t1" } }),
-                err: "",
-              }
-            : original(argv, opts),
+          argv[0] === "hc" && argv[2] === "run" ? hcCreated(world, "qa:p1") : original(argv, opts),
       },
       { key: lane.key, title: "QA", brief, done: "merged acme/app#1", budget: { tokens: undefined, costUsd: null } },
     );

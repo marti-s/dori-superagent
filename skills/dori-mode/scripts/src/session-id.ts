@@ -52,7 +52,7 @@ export type SessionDeps = {
   readonly listDir?: (dir: string) => readonly string[];
 };
 
-/** The session's root process (herdr's shell, hc's terminal program); 0 when the runtime cannot say. */
+/** The session's root process (the hc terminal's program); 0 when the runtime cannot say. */
 const rootPidOf = async (ref: SessionRef, deps: SessionDeps): Promise<number> => {
   const rts = deps.rts ?? runtimesFor({}, process.env, deps.run);
   try {

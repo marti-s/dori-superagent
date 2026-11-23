@@ -3,17 +3,12 @@ import type { SessionRef } from "./runtime/types.ts";
 export type LaneStatus = "working" | "waiting" | "ready" | "done" | "lost";
 
 /**
- * One lane record. `sessionRef` is the session it runs in, on whichever runtime opened it; `paneId`/`tabId` are written
- * beside it (the ref's id and container) so an older binary still reads the file. `migratedFrom`: the sessions it ran in
- * before a `dori migrate`. `migration`: a handover is in progress, and the duty loop leaves the record alone.
- * `sessionPath`: the agent's own session file, when its command records one; `dori migrate --resume` needs it.
+ * One lane record. `sessionRef` is the hc terminal it runs in; `paneId`/`tabId` are written beside it (both the
+ * terminal's address) so an older binary still reads the file.
  */
 export type Lane = {
   key: string;
   sessionRef: SessionRef;
-  migratedFrom?: SessionRef[];
-  migration?: true;
-  sessionPath?: string;
   paneId: string;
   tabId: string;
   brief: string;
@@ -26,7 +21,7 @@ export type Lane = {
   log: { at: number; kind: "start" | "report" | "ready" | "nudge" | "done" | "lost"; text: string }[];
 };
 
-/** The sessions `dori up` opens; roles.json maps each to a ref string (a bare herdr pane id, or `hc:t7`). */
+/** The sessions `dori up` opens; roles.json maps each to a ref string (an hc terminal address, `t7`). */
 export type Role = "lead" | "duty" | "duty-loop" | "hourly-loop";
 
 /**

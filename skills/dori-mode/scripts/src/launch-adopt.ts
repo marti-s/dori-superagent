@@ -15,8 +15,8 @@ export const adoptLane = async (deps: FlowDeps, input: LaunchInput & { readonly 
     cwd: input.cwd ?? deps.config.defaultCwd,
     openedAt: iso(deps.clock),
   };
-  // `hc:t7`, `herdr:w1:p3` or a bare `w1:p3` names its runtime; any other id is a session on the runtime new lanes
-  // open on (as `dori boot` prints it), never the legacy herdr reading of records written before runtimes existed.
+  // `hc:t7` or a bare `t7` is an hc terminal address; any other id is kept as given, a session on the runtime new
+  // lanes open on (as `dori boot` prints it).
   const ref = parseRef(input.pane) ?? { runtime: runtimesOf(deps).default.kind, id: input.pane };
   const lane = { ...base, ...sessionFields(ref) };
   await deps.registry.write(lane);

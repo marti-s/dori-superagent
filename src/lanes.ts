@@ -27,18 +27,13 @@ export async function startLane(
   const footer = prompt("lane-footer.md", { key, dori: d.doriCmd });
   await Bun.write(briefPath, `${readFileSync(briefFile, "utf8").trimEnd()}\n\n${footer}`);
 
-  // The group is the caller's own when it runs in a session of the selected runtime (a lane opened from the lead's
-  // workspace stays there); otherwise herdr gets a new "dori" workspace and hc this home's group label.
+  // The group is this home's label unless the caller names one.
   const rt = d.runtimes.default;
-  const self = d.runtimes.selfAny(process.env);
-  const group =
-    opts.group ??
-    (self?.runtime === rt.kind ? self.group : undefined) ??
-    (rt.kind === "herdr" ? await rt.createGroup("dori", cwd) : groupId(d.store.root));
+  const group = opts.group ?? groupId(d.store.root);
   const kickoff = `Read your brief at ${briefPath} and execute it. Your lane key is ${key}.`;
   const ref = await openSession(
     rt,
-    { name: key, role: "lane", container: "tab", cwd, env: { DORI_LANE: key, DORI_HOME: d.store.root }, group },
+    { name: key, role: "lane", cwd, env: { DORI_LANE: key, DORI_HOME: d.store.root }, group },
     `${d.agentCmd} ${shq(kickoff)}`,
   );
 
@@ -47,7 +42,7 @@ export async function startLane(
     key,
     sessionRef: ref,
     paneId: ref.id,
-    tabId: ref.container ?? "",
+    tabId: ref.id,
     brief: briefPath,
     cwd,
     status: "working",

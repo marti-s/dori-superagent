@@ -1,7 +1,6 @@
 import { mkdirSync, readdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 
-import { HerdrRuntime } from "../../../../src/runtime/herdr/index.ts";
 import type { SessionRef } from "../../../../src/runtime/types.ts";
 import type { BudgetLimits } from "./supervision-observe.ts";
 
@@ -22,7 +21,7 @@ export type Lane = {
   readonly key: string;
   readonly title: string;
   readonly thread: string;
-  /** The lane's session on its runtime. `pane`/`tab` mirror its id and container for older readers. */
+  /** The lane's session: an hc terminal. `pane`/`tab` both mirror its address for older readers. */
   readonly sessionRef?: SessionRef;
   readonly pane?: string | undefined;
   readonly tab?: string;
@@ -60,23 +59,18 @@ export type Lane = {
   readonly receipt?: unknown;
 };
 
-/** Records written before runtimes existed name a herdr pane (and tab): the only runtime the skill spoke then. */
-const LEGACY_RUNTIME = new HerdrRuntime().kind;
-
-/** A record as read: an older one gains `sessionRef` from its `pane`/`tab`; a newer one keeps what it stored. */
+/** A record as read: one written before session refs existed gains `sessionRef` from its `pane`, an hc terminal address. */
 export const upgradeLane = (lane: Lane): Lane =>
-  lane.sessionRef || !lane.pane
-    ? lane
-    : { ...lane, sessionRef: { runtime: LEGACY_RUNTIME, id: lane.pane, ...(lane.tab ? { container: lane.tab } : {}) } };
+  lane.sessionRef || !lane.pane ? lane : { ...lane, sessionRef: { runtime: "hc", id: lane.pane } };
 
 /** The lane's session, whichever way the record was written (or built in memory). */
 export const sessionOf = (lane: Lane): SessionRef | undefined => upgradeLane(lane).sessionRef;
 
-/** The fields a lane record stores for a session: the ref itself and the `pane`/`tab` mirror. */
+/** The fields a lane record stores for a session: the ref itself and the `pane`/`tab` mirror (an hc terminal is its own tab). */
 export const sessionFields = (ref: SessionRef): Pick<Lane, "sessionRef" | "pane" | "tab"> => ({
   sessionRef: ref,
   pane: ref.id,
-  ...(ref.container ? { tab: ref.container } : {}),
+  tab: ref.id,
 });
 
 const sameSession = (a: SessionRef | undefined, b: SessionRef): boolean =>

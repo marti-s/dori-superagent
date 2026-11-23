@@ -1,16 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import {
-  appendQueue,
-  forwardOf,
-  forwardPending,
-  inboxFile,
-  inboxRefs,
-  mergeForwarded,
-  readQueue,
-  writeQueue,
-} from "./inbox-files.ts";
+import { appendQueue, inboxFile, inboxRefs, readQueue, writeQueue } from "./inbox-files.ts";
 import { takeInboxLock } from "./inbox-lock.ts";
 import { refFromText, refText, sameSession } from "./refs.ts";
 import type { SessionRef } from "./runtime/types.ts";
@@ -27,14 +18,12 @@ import {
 
 export type { HostLoad } from "./store-types.ts";
 
-/** A lane file as any binary wrote it: one from before runtimes existed has no `sessionRef`. */
+/** A lane file as any binary wrote it: one written before session refs existed has only `paneId`. */
 type StoredLane = Omit<Lane, "sessionRef"> & { sessionRef?: SessionRef };
 
-/** Reads a record without `sessionRef` as the herdr pane it names; the same input always gives the same lane. */
+/** Reads a record without `sessionRef` as the hc terminal its `paneId` names; the same input always gives the same lane. */
 const upgrade = (raw: StoredLane): Lane =>
-  raw.sessionRef !== undefined
-    ? (raw as Lane)
-    : { ...raw, sessionRef: { runtime: "herdr", id: raw.paneId, ...(raw.tabId ? { container: raw.tabId } : {}) } };
+  raw.sessionRef !== undefined ? (raw as Lane) : { ...raw, sessionRef: { runtime: "hc", id: raw.paneId } };
 
 const checkedId = (id: string): string => {
   if (!KEY_RE.test(id)) throw new Error(`invalid id ${JSON.stringify(id)}: must match ${KEY_RE}`);
@@ -62,10 +51,10 @@ export class Store {
     return raw && upgrade(raw);
   }
 
-  /** Writes `paneId`/`tabId` from `sessionRef` beside it, so an older binary still reads the record. */
+  /** Writes `paneId`/`tabId` from `sessionRef` beside it (an hc terminal is its own tab), so an older binary still reads the record. */
   saveLane(lane: Lane): void {
-    const { id, container } = lane.sessionRef;
-    this.writeJson(join(this.root, "lanes", `${lane.key}.json`), { ...lane, paneId: id, tabId: container ?? "" });
+    const { id } = lane.sessionRef;
+    this.writeJson(join(this.root, "lanes", `${lane.key}.json`), { ...lane, paneId: id, tabId: id });
   }
 
   lanes(): Lane[] {
@@ -81,7 +70,7 @@ export class Store {
     return this.lanes().find((l) => sameSession(l.sessionRef, ref) && l.status !== "done");
   }
 
-  /** roles.json holds ref strings (refText), so an older binary still parses it; a bare value is a herdr pane. */
+  /** roles.json holds ref strings (refText): bare hc terminal addresses, so an older binary still parses it. */
   roles(): Partial<Record<Role, SessionRef>> {
     const raw = this.readJson<Partial<Record<Role, string>>>(join(this.root, "roles.json")) ?? {};
     return Object.fromEntries(Object.entries(raw).map(([role, text]) => [role, refFromText(text)]));
@@ -100,9 +89,8 @@ export class Store {
     return inboxFile(this.root, ref);
   }
 
-  /** Appends to the inbox of the session `ref` was forwarded to, if it was. */
   enqueue(ref: SessionRef, msg: QueuedMessage): void {
-    appendQueue(this.inboxPath(this.forwardOf(ref) ?? ref), msg);
+    appendQueue(this.inboxPath(ref), msg);
   }
 
   queued(ref: SessionRef): QueuedMessage[] {
@@ -111,21 +99,6 @@ export class Store {
 
   saveInbox(ref: SessionRef, msgs: readonly QueuedMessage[]): void {
     writeQueue(this.inboxPath(ref), msgs);
-  }
-
-  /** The session this one's inbox was forwarded to by a migration (its `.forward` marker), or undefined. */
-  forwardOf(ref: SessionRef): SessionRef | undefined {
-    return forwardOf(this.root, ref);
-  }
-
-  /** True when an old inbox forwarded into `ref` still holds entries. */
-  forwardPending(ref: SessionRef): boolean {
-    return forwardPending(this.root, ref);
-  }
-
-  /** Merges old inboxes forwarded into `ref` into its inbox; call it under ref's inbox lock. */
-  mergeForwarded(ref: SessionRef): void {
-    mergeForwarded(this.root, ref);
   }
 
   /**

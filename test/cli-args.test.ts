@@ -3,7 +3,7 @@ import { main } from "../src/cli.ts";
 import { parse, USAGE } from "../src/cli-args.ts";
 import { startLane } from "../src/lanes.ts";
 import { setup } from "./harness-setup.ts";
-import { href } from "./fake.ts";
+import { sref } from "./fake.ts";
 
 test("a value flag left without a value at the end is refused; nothing is sent or started", async () => {
   const { d, lead, brief } = setup();
@@ -13,7 +13,7 @@ test("a value flag left without a value at the end is refused; nothing is sent o
   await expect(main(["report", "a-lane", "--text"], d)).rejects.toThrow("--text needs a value");
   await expect(main(["start", "b-lane", "--brief", brief, "--cwd"], d)).rejects.toThrow("--cwd needs a value");
   expect(lead.received).toEqual([]);
-  expect(d.store.queued(href("w1:p1"))).toEqual([]);
+  expect(d.store.queued(sref("t1"))).toEqual([]);
   expect(d.store.lane("b-lane")).toBeUndefined();
 });
 

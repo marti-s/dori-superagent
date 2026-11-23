@@ -29,17 +29,10 @@ export class Runtimes {
     return [...this.built.keys()];
   }
 
-  /**
-   * The caller's own session from whichever runtime it runs in, whatever kind is selected: `HC_TERMINAL_ID` names an
-   * hc terminal, else `HERDR_PANE_ID` a herdr pane (grouped by `HERDR_WORKSPACE_ID` when set). Builds no runtime.
-   */
+  /** The caller's own session: `HC_TERMINAL_ID` names the hc terminal it runs in. Builds no runtime. */
   selfAny(env: Readonly<Record<string, string | undefined>>): SessionRef | undefined {
     const terminal = nonEmpty(env["HC_TERMINAL_ID"]);
-    if (terminal !== undefined) return { runtime: "hc", id: terminal };
-    const pane = nonEmpty(env["HERDR_PANE_ID"]);
-    if (pane === undefined) return undefined;
-    const workspace = nonEmpty(env["HERDR_WORKSPACE_ID"]);
-    return { runtime: "herdr", id: pane, ...(workspace === undefined ? {} : { group: workspace }) };
+    return terminal === undefined ? undefined : { runtime: "hc", id: terminal };
   }
 
   private of(kind: RuntimeKind): SessionRuntime {

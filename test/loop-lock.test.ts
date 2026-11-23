@@ -50,7 +50,7 @@ describe("hardening", () => {
     let home = "";
     const { d, add, tick } = setup({
       exec: (inner) => async (cmd, argv) => {
-        if (cmd === "herdr" && argv[0] === "tab") {
+        if (cmd === "hc" && argv[1] === "run") {
           writeFileSync(join(home, "loop", "lock"), JSON.stringify({ pid: process.ppid, at: 0, nonce: "usurper" }));
         }
         return inner(cmd, argv);

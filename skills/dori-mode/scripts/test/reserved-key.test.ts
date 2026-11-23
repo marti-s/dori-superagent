@@ -86,8 +86,8 @@ test("bySession never returns a record keyed lead left from before the key was r
   await registry.write(legacy);
   await registry.write({ ...legacy, key: "real-lane", pane: "w:p2" });
   // Then the lead's pane resolves to no lane, the lane's pane still resolves, and the record stays readable by key.
-  expect(await registry.bySession({ runtime: "herdr", id: "lead:p1" })).toBeNull();
-  expect((await registry.bySession({ runtime: "herdr", id: "w:p2" }))?.key).toBe("real-lane");
+  expect(await registry.bySession({ runtime: "hc", id: "lead:p1" })).toBeNull();
+  expect((await registry.bySession({ runtime: "hc", id: "w:p2" }))?.key).toBe("real-lane");
   expect((await registry.read("lead"))?.pane).toBe("lead:p1");
   expect(existsSync(registry.path("lead"))).toBe(true);
 });

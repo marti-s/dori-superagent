@@ -4,13 +4,18 @@ import { runtimesFor } from "../src/run.ts";
 import { resolveSession } from "../src/session-id.ts";
 import { hcAnswer, hcTerm } from "./hc-runner.ts";
 
-const P1 = { runtime: "herdr", id: "w:p1" } as const;
+const P1 = { runtime: "hc", id: "t1" } as const;
 
 test("the session id is read from --session, then a child's environment, then the session file made at start", async () => {
-  const info = JSON.stringify({ result: { pane: { pane_id: "w:p1", agent: "omo" }, process_info: { shell_pid: 10 } } });
+  const info = JSON.stringify({
+    address: "t1",
+    state: "live",
+    pid: 10,
+    foreground: { name: "zsh", argv: ["zsh"], pid: 10 },
+  });
   const fake = (extra: Record<string, string>) => async (argv: readonly string[]) => {
     const line = argv.join(" ");
-    if (/^herdr pane (process-info|get)/.test(line)) return { code: 0, out: info, err: "" };
+    if (line.startsWith("hc --json get t1")) return { code: 0, out: info, err: "" };
     const hit = Object.entries(extra).find(([k]) => line.startsWith(k));
     return { code: hit ? 0 : 1, out: hit?.[1] ?? "", err: "" };
   };
@@ -44,7 +49,7 @@ test("the session id is read from --session, then a child's environment, then th
   expect(byStart).toEqual({ id: "01a11440-ee81-7f90-b2ed-dcc7d51a0adf", via: "start-time", pid: 11 });
 });
 
-test("an agent run directly as the session's program is the root itself, found on hc as on herdr", async () => {
+test("an agent run directly as the session's program is the root itself", async () => {
   const world = { terminals: { t1: hcTerm({ pid: 900 }) } };
   const run = async (argv: readonly string[]) =>
     argv[0] === "hc" ? hcAnswer(world, argv) : { code: 1, out: "", err: "" };

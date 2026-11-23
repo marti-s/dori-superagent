@@ -26,7 +26,7 @@ const USAGE = `dori <command> [options]
   checkpoints <key>                    read completed steps before resuming remote work
   verify-pr <owner/repo> <num> [--loop N] [--cwd DIR]
                                        check every commit's author/committer email and PR-level tests; print the UI test loop (not run)
-  claim-done [<key>] --evidence TEXT  key defaults to the lane registered for your own session (HC_TERMINAL_ID or HERDR_PANE_ID)
+  claim-done [<key>] --evidence TEXT  key defaults to the lane registered for your own session (HC_TERMINAL_ID)
   object-done <key> --reason TEXT [--reason TEXT ...]
   lesson add <key> --rule TEXT --evidence PATH [--cwd DIR]
   lesson add --global --rule TEXT --evidence REF

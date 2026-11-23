@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 
-import type { DoriConfig } from "../src/config.ts";
 import { adoptLane } from "../src/launch-adopt.ts";
 import { depsFor, fakeClock, newWorld, withState, type World } from "./fakes.ts";
 
@@ -13,26 +12,24 @@ beforeEach(() => {
 });
 afterEach(() => state.done());
 
-const adoptedRef = async (runtime: NonNullable<DoriConfig["runtime"]>, pane: string) => {
-  const deps = depsFor(world, fakeClock(T0), state.dir, { runtime });
-  const key = `adopted-${runtime}`;
+const adoptedRef = async (pane: string, key: string) => {
+  const deps = depsFor(world, fakeClock(T0), state.dir);
   await adoptLane(deps, { key, title: "t", brief: "/b.md", done: "closed acme/app#3", pane });
   const lane = await deps.registry.read(key);
   return { sessionRef: lane?.sessionRef, pane: lane?.pane };
 };
 
-test("a bare pane id adopted on an hc config is recorded as an hc session (#222)", async () => {
-  expect(await adoptedRef("hc", "t4q")).toEqual({ sessionRef: { runtime: "hc", id: "t4q" }, pane: "t4q" });
+test("a bare pane id is recorded as an hc session (#222)", async () => {
+  expect(await adoptedRef("t4q", "bare")).toEqual({ sessionRef: { runtime: "hc", id: "t4q" }, pane: "t4q" });
 });
 
-test("a bare pane id adopted on a herdr config is recorded as a herdr pane", async () => {
-  expect(await adoptedRef("herdr", "t4q")).toEqual({ sessionRef: { runtime: "herdr", id: "t4q" }, pane: "t4q" });
+test("the hc prefix names the same terminal as the bare address", async () => {
+  expect(await adoptedRef("hc:t7", "prefixed")).toEqual({ sessionRef: { runtime: "hc", id: "t7" }, pane: "t7" });
 });
 
-test("an explicit runtime prefix wins over the configured runtime", async () => {
-  expect(await adoptedRef("hc", "herdr:w1:p3")).toEqual({
-    sessionRef: { runtime: "herdr", id: "w1:p3" },
-    pane: "w1:p3",
+test("an id that is no hc address is kept as given, a session on hc", async () => {
+  expect(await adoptedRef("lead:p1", "other")).toEqual({
+    sessionRef: { runtime: "hc", id: "lead:p1" },
+    pane: "lead:p1",
   });
-  expect(await adoptedRef("herdr", "hc:t7")).toEqual({ sessionRef: { runtime: "hc", id: "t7" }, pane: "t7" });
 });

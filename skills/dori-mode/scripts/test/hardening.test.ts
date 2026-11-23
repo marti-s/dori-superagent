@@ -66,7 +66,7 @@ test("freshness persists a wall ceiling blocker without sending or terminating",
     // Then state and alert agree, and only a pane read was needed.
     expect(result.map((a) => a.kind)).toEqual(["blocked"]);
     expect(new Reports(state.dir).read(lane.key)?.state).toBe("blocked");
-    expect(world.calls.every((c) => c[0] === "herdr" && c[2] === "read")).toBe(true);
+    expect(world.calls.every((c) => c[0] === "hc" && c[2] === "read")).toBe(true);
   } finally {
     state.done();
   }

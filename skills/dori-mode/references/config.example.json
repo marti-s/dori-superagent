@@ -1,10 +1,10 @@
 {
-  "runtime": "herdr",
+  "runtime": "hc",
   "stateDir": "~/.dori/state",
   "laneWorkspace": "lanes",
   "workspaces": ["lanes"],
   "ignorePanes": [],
-  "leadPane": "<your herdr pane id, from: herdr pane current>",
+  "leadPane": "<your hc terminal address, from: echo $HC_TERMINAL_ID>",
   "defaultCwd": "~/code/my-project",
   "agentCommand": ["omo", "--model", "{model}", "{prompt}"],
   "defaultModel": "anthropic/claude-opus-5-5",

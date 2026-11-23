@@ -64,9 +64,9 @@ describe("typed text, shells, keys", () => {
 });
 
 describe("close, list, self", () => {
-  test("close kills then removes, whatever the scope", async () => {
+  test("close kills then removes", async () => {
     const { fake, rt, sleeps } = rig({ t1: terminal() });
-    await rt.close(T1, "container");
+    await rt.close(T1);
     expect(fake.calls).toEqual([
       ["kill", "t1"],
       ["rm", "t1"],

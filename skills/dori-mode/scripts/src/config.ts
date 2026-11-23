@@ -108,7 +108,7 @@ const repoIdentities = (value: unknown): Record<string, CommitIdentity> =>
 
 export class ConfigError extends Error {}
 
-const RUNTIMES: Readonly<Record<RuntimeKind, true>> = { herdr: true, hc: true };
+const RUNTIMES: Readonly<Record<RuntimeKind, true>> = { hc: true };
 const checkRuntime = (value: unknown): void => {
   if (value !== undefined && !(typeof value === "string" && Object.hasOwn(RUNTIMES, value)))
     throw new ConfigError(

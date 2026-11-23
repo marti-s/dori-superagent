@@ -45,28 +45,7 @@ const agent = (pane_id: string, workspace_id: string) => ({
   agent_status: "working",
 });
 
-test("a workspace filter that leaves out laneWorkspace is a CONFIG_WARN and fails boot", async () => {
-  // Given a filter naming an old workspace while new lanes open in w2.
-  const world = newWorld();
-  world.panes = [{ pane_id: "w2:p1", workspace_id: "w2" }];
-  // When boot runs; then the mismatch is one line and the exit is non-zero.
-  const result = await boot(world, { workspaces: ["w1"], laneWorkspace: "w2" });
-  expect(result.lines).toContain("CONFIG_WARN workspaces=[w1] does not include laneWorkspace=w2");
-  expect(result.exitCode).toBe(1);
-  expect(result.lines.at(-1)).toBe("BOOT incomplete read-only; nothing restarted, written or stopped");
-});
-
-test("live agents on herdr that no filtered workspace matches are a CONFIG_WARN", async () => {
-  // Given no laneWorkspace configured to compare, and agents running only outside the filtered workspace.
-  const world = newWorld();
-  world.panes = [{ pane_id: "w2:p1", workspace_id: "w2" }, agent("w3:p1", "w3"), agent("w3:p2", "w3")];
-  // When boot runs; then the filter is named as matching none of them.
-  const result = await boot(world, { workspaces: ["w1"] });
-  expect(result.lines).toContain("CONFIG_WARN workspaces=[w1] match none of the 2 live agent sessions on herdr");
-  expect(result.exitCode).toBe(1);
-});
-
-test("a filter that covers the agents, or no filter at all, stays quiet", async () => {
+test("a workspace filter only narrows the session list: with one or with none, boot stays quiet", async () => {
   // Given agents in the filtered lane workspace, an agent elsewhere, and the lead in its own workspace.
   const world = newWorld();
   world.panes = [{ pane_id: "w2:p1", workspace_id: "w2" }, agent("w3:p1", "w3"), agent("w4:p1", "w4")];
@@ -79,22 +58,22 @@ test("a filter that covers the agents, or no filter at all, stays quiet", async 
   }
 });
 
-test("DRIFT counts open lanes whose pane herdr reports gone; closed and live lanes are not counted", async () => {
+test("DRIFT counts open lanes whose pane hc reports gone; closed and live lanes are not counted", async () => {
   // Given two open lanes on vanished panes, one closed lane on a vanished pane, and one lane on a live pane.
   const world = newWorld();
   world.panes = [{ pane_id: "w2:p1", workspace_id: "w2" }, agent("w2:p5", "w2")];
   const lanes = [
-    lane("stale-a", "working", { runtime: "herdr", id: "w1:p8" }),
-    lane("stale-b", "not-done", { runtime: "herdr", id: "w1:p9" }),
-    lane("old", "closed", { runtime: "herdr", id: "w1:p7" }),
-    lane("live", "working", { runtime: "herdr", id: "w2:p5" }),
+    lane("stale-a", "working", { runtime: "hc", id: "w1:p8" }),
+    lane("stale-b", "not-done", { runtime: "hc", id: "w1:p9" }),
+    lane("old", "closed", { runtime: "hc", id: "w1:p7" }),
+    lane("live", "working", { runtime: "hc", id: "w2:p5" }),
   ];
   // When boot runs; then one DRIFT line counts the two, and the boot fails.
   const result = await boot(world, {}, lanes);
   expect(result.lines).toContain("DRIFT n=2 stale-a stale-b");
   expect(result.exitCode).toBe(1);
   // And only the vanished open lanes were probed.
-  const probed = world.calls.filter((c) => c[0] === "herdr" && c[2] === "get").map((c) => c[3]);
+  const probed = world.calls.filter((c) => c[0] === "hc" && c[2] === "get").map((c) => c[3]);
   expect(probed.sort()).toEqual(["w1:p8", "w1:p9"]);
 });
 
@@ -102,15 +81,15 @@ test("a verified-done lane on a gone pane is not drift, as it is not VANISHED (c
   // Given a lane settled as verified-done whose pane was closed before its status reached closed.
   const world = newWorld();
   world.panes = [{ pane_id: "w2:p1", workspace_id: "w2" }];
-  const result = await boot(world, {}, [lane("settled", "verified-done", { runtime: "herdr", id: "w1:p8" })]);
+  const result = await boot(world, {}, [lane("settled", "verified-done", { runtime: "hc", id: "w1:p8" })]);
   // Then boot neither flags nor probes it.
   expect(result.lines).toContain("DRIFT n=0");
   expect(result.lines.some((l) => l.startsWith("VANISHED"))).toBe(false);
-  expect(world.calls.some((c) => c[0] === "herdr" && c[2] === "get")).toBe(false);
+  expect(world.calls.some((c) => c[0] === "hc" && c[2] === "get")).toBe(false);
 });
 
-test("on hc, DRIFT uses hc's own probe and the workspace check does not apply", async () => {
-  // Given an hc runtime with a workspace filter (meaningless there), a live lane, and a lane whose terminal is gone.
+test("DRIFT is found the same way under a workspace filter, which warns about nothing", async () => {
+  // Given a workspace filter that names neither lane's group, a live lane, and a lane whose terminal is gone.
   const world = newWorld();
   world.terminals = { t1: hcTerm() };
   const lanes = [

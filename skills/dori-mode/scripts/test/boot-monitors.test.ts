@@ -46,8 +46,8 @@ test("vanished, live and unassigned panes reconcile without mutating the lane re
   const before = JSON.stringify(lanes);
   // When reconciled against the live pane list.
   const result = reconcilePanes(lanes, [
-    { ref: { runtime: "herdr", id: "w2:p1", group: "w2" } },
-    { ref: { runtime: "herdr", id: "w2:p2", group: "w2" } },
+    { ref: { runtime: "hc", id: "w2:p1", group: "w2" } },
+    { ref: { runtime: "hc", id: "w2:p2", group: "w2" } },
   ]);
   // Then each lane is classified, unowned panes are listed, and the input is untouched.
   expect(result.lanes.map((l) => l.paneState)).toEqual(["vanished", "live", "unassigned"]);
@@ -60,7 +60,7 @@ test("persistent watches on closed or verified lanes become owner-scoped stop ca
   const lanes = [lane("closed", "closed"), lane("verified", "verified-done"), lane("claimed", "done-claimed")];
   const input = manifest([
     { command: "dori watch closed", monitorId: "mon_CLOSED" },
-    { command: "herdr pane read w1:verified", monitorId: "mon_VERIFIED" },
+    { command: "hc read w1:verified", monitorId: "mon_VERIFIED" },
     { command: "dori watch claimed", monitorId: "mon_CLAIMED" },
     { command: "dori watch closed", monitorId: "mon_EPHEMERAL", persistent: false },
   ]);

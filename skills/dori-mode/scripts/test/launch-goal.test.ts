@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { launchLane } from "../src/launch.ts";
-import { depsFor, fakeClock, newWorld, withState, type World } from "./fakes.ts";
+import { depsFor, fakeClock, hcCreated, hcListed, newWorld, withState, type World } from "./fakes.ts";
 
 const T0 = Date.parse("2026-01-01T12:00:00.000Z");
 let state: ReturnType<typeof withState>;
@@ -53,20 +53,8 @@ test("a narrow pane that cuts the goal footer short reads STARTUP_OK when the la
     const deps = {
       ...base,
       run: async (argv: readonly string[]) => {
-        if (argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create")
-          return {
-            code: 0,
-            out: JSON.stringify({ result: { root_pane: { pane_id: "w:p9" }, tab_id: "w:t9" } }),
-            err: "",
-          };
-        if (argv[0] === "herdr" && argv[1] === "pane" && argv[2] === "list")
-          return {
-            code: 0,
-            out: JSON.stringify({
-              result: { panes: [{ pane_id: "w:p9", workspace_id: "w", agent: "pi", agent_status: "working" }] },
-            }),
-            err: "",
-          };
+        if (argv[0] === "hc" && argv[2] === "run") return hcCreated(world, "w:p9");
+        if (argv[0] === "hc" && argv[2] === "ls" && world.terminals["w:p9"]) return hcListed("w:p9", "working");
         return base.run(argv);
       },
     };

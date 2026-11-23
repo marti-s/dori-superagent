@@ -4,51 +4,100 @@ import { join } from "node:path";
 import type { Deps } from "../src/harness.ts";
 import type { Exec } from "../src/runtime/exec.ts";
 import { HcRuntime } from "../src/runtime/hc/index.ts";
-import { HerdrRuntime } from "../src/runtime/herdr/index.ts";
 import { Runtimes } from "../src/runtime/registry.ts";
-import type { AgentStatus, RuntimeKind, SessionRef } from "../src/runtime/types.ts";
+import type { AgentStatus, SessionRef } from "../src/runtime/types.ts";
 import { Store, type HostLoad } from "../src/store.ts";
 import type { DutyCounts, TelemetryEvent, Usage } from "../src/telemetry.ts";
-import { FakeHc } from "./fake-hc.ts";
+import { FakeHc, type FakeTerminal, terminal } from "./fake-hc.ts";
 
-/** A herdr pane ref, the form every herdr-world test addresses sessions by. */
-export const href = (id: string): SessionRef => ({ runtime: "herdr", id });
+/** An hc terminal ref, the form every test addresses sessions by. */
+export const sref = (id: string): SessionRef => ({ runtime: "hc", id });
+
+type Foreground = string | { name: string; argv: string[] } | null;
+const SHELL: Foreground = "-zsh";
+const REPORTED: readonly AgentStatus[] = ["idle", "working", "blocked", "error", "done"];
 
 /**
- * `screen` is what `pane read` returns; undefined makes the read fail. `agent` is the agent name `pane get` reports
- * (default "pi"), `pgid` the foreground process group `pane process-info` reports (default 101).
+ * One hc terminal as a test steers it. `status` is the word the agent reports; `shell` is a terminal with no agent (a
+ * shell in front) and `unknown` a program that never reported. `received` holds what was delivered to the agent,
+ * `ran` what was typed into the shell (the start command, `--to-shell`).
  */
-type Pane = {
-  status: AgentStatus;
-  received: string[];
-  ran: string[];
-  screen?: string | undefined;
-  foreground?: string | { name: string; argv: string[] }[] | undefined;
-  agent?: string;
-  pgid?: number;
-};
+export class Pane {
+  received: string[] = [];
+  ran: string[] = [];
+
+  constructor(readonly terminal: FakeTerminal) {}
+
+  get status(): AgentStatus {
+    const word = this.terminal.status?.state;
+    if (word !== undefined) return REPORTED.find((s) => s === word) ?? "unknown";
+    return this.shellInFront() ? "shell" : "unknown";
+  }
+
+  set status(status: AgentStatus) {
+    const reports = REPORTED.includes(status);
+    this.terminal.status = reports ? { state: status, app: "omo" } : null;
+    this.terminal.reported = reports;
+    this.foreground = status === "shell" ? SHELL : "omo";
+  }
+
+  /** What `hc read` returns for the terminal. */
+  get screen(): string | undefined {
+    return this.terminal.screen;
+  }
+
+  set screen(text: string | undefined) {
+    if (text === undefined) delete this.terminal.screen;
+    else this.terminal.screen = text;
+  }
+
+  /** The foreground process `hc get` reports: a name, a full process, or null when hc cannot say. */
+  set foreground(fg: Foreground) {
+    this.terminal.foreground =
+      fg === null ? null : typeof fg === "string" ? { name: fg, argv: [fg], pid: 4242 } : { ...fg, pid: 4242 };
+  }
+
+  /** The terminal's program has ended: hc still lists it, as `finished`. */
+  set finished(done: boolean) {
+    this.terminal.state = done ? "finished" : "live";
+  }
+
+  shellInFront(): boolean {
+    const name = this.terminal.foreground?.name.replace(/^-/, "");
+    return name === undefined || ["sh", "bash", "zsh", "fish"].includes(name);
+  }
+}
+
+/** The world's terminals by address; deleting one removes it from hc too (a terminal that is gone). */
+class Panes extends Map<string, Pane> {
+  constructor(private readonly hc: FakeHc) {
+    super();
+  }
+
+  override delete(id: string): boolean {
+    this.hc.terminals.delete(id);
+    return super.delete(id);
+  }
+}
 
 export class World {
-  panes = new Map<string, Pane>();
-  /** The hc terminals, for deps({ runtime: "hc" }); its calls are recorded in `calls` too. */
+  /** The recorder standing in for the `hc` binary; its calls are recorded in `calls` too. */
   hc = new FakeHc();
+  panes = new Panes(this.hc);
   calls: { cmd: string; argv: readonly string[] }[] = [];
   clock = 1_000_000;
   host: HostLoad = { load1: 1, cores: 8, memFreePct: 50 };
-  next = 1;
-  /** pane id -> herdr error text returned by `agent prompt` (exit 1) */
-  promptFails = new Map<string, string>();
-  /** pane id -> called with the 1-based count of `pane get` calls for that pane, before it answers */
+  /** terminal address -> called with the 1-based count of `hc get` calls for it, before it answers */
   getHook = new Map<string, (n: number) => void>();
   private gets = new Map<string, number>();
-  /** `pane process-info` fails (exit 1) for every pane */
-  processInfoFails = false;
+  /** terminal address -> every `hc send` to it exits 1 with this text and no JSON: the text may or may not have arrived */
+  sendFails = new Map<string, string>();
+  /** terminal address -> called right before an `hc send` reaches it: what changed since the probe */
+  beforeSend = new Map<string, () => void>();
   /** a command named `slow-hook` awaits this before answering (a hook that hangs) */
   hang: Promise<void> | undefined;
   /** called when a hanging `slow-hook` is killed; the killed hook then exits 143 */
   onHookKill: (() => void) | undefined;
-  /** number of upcoming `pane send-keys` calls that fail (exit 1) */
-  keyFails = 0;
   gh: (argv: readonly string[]) => { code: number; stdout: string } = () => ({ code: 1, stdout: "" });
   usage: TelemetryEvent[] = [];
   dutyCounts: DutyCounts[] = [];
@@ -65,16 +114,26 @@ export class World {
     },
     flush: async () => {},
   };
-  /** every command other than herdr, hc and gh: the reviewer, and lifecycle hooks */
+  /** every command other than hc and gh: the reviewer, and lifecycle hooks */
   reviewer: (argv: readonly string[]) => { code: number; stdout: string; stderr?: string } = () => ({
     code: 0,
     stdout: "VERDICT: CLEAR",
   });
 
   addPane(id: string, status: AgentStatus = "idle"): Pane {
-    const p = { status, received: [], ran: [] };
-    this.panes.set(id, p);
-    return p;
+    const t = terminal();
+    this.hc.terminals.set(id, t);
+    const pane = new Pane(t);
+    pane.status = status;
+    this.panes.set(id, pane);
+    return pane;
+  }
+
+  /** The hc verb and terminal address of a recorded call (`hc --json <verb> <id> ...`). */
+  hcCalls(verb: string, id?: string): (readonly string[])[] {
+    return this.calls
+      .filter((c) => c.cmd === "hc" && c.argv[1] === verb && (id === undefined || c.argv[2] === id))
+      .map((c) => c.argv);
   }
 
   exec: Exec = async (cmd, argv, options) => {
@@ -94,87 +153,46 @@ export class World {
       if (killed) return { code: 143, stdout: "", stderr: "terminated" };
     }
     if (cmd === "gh") return { ...this.gh(argv), stderr: "" };
-    if (cmd === "hc") return this.hc.exec(cmd, argv);
-    if (cmd !== "herdr") return { stderr: "", ...this.reviewer(argv) };
-    const ok = (result: unknown) => ({ code: 0, stdout: JSON.stringify({ result }), stderr: "" });
-    const [group, verb, id] = argv;
-    if (group === "pane" && verb === "process-info") {
-      const target = this.panes.get(String(argv[3]));
-      if (!target || this.processInfoFails) return { code: 1, stdout: "", stderr: "process-info failed" };
-      const fg = target.foreground ?? (target.status === "shell" ? "-bash" : "omo");
-      const procs = typeof fg === "string" ? [{ name: fg, argv: [fg] }] : fg;
-      return ok({
-        process_info: {
-          pane_id: argv[3],
-          shell_pid: 100,
-          foreground_process_group_id: target.pgid ?? 101,
-          foreground_processes: procs.map((x, i) => ({ ...x, pid: 101 + i })),
-        },
-      });
-    }
-    if ((group === "tab" || group === "workspace") && verb === "create") {
-      const pane = `w1:p${++this.next}`;
-      this.addPane(pane, "shell");
-      return ok({ root_pane: { pane_id: pane, tab_id: `w1:t${this.next}`, workspace_id: "w1" } });
-    }
-    if (group === "pane" && verb === "split") {
-      const pane = `w1:p${++this.next}`;
-      this.addPane(pane, "shell");
-      return ok({ pane: { pane_id: pane, tab_id: "w1:t1", workspace_id: "w1" } });
-    }
-    const pane = id ? this.panes.get(id) : undefined;
-    if (!pane) return { code: 1, stdout: "", stderr: `pane_not_found ${id}` };
-    if (group === "pane" && verb === "get") {
-      const n = (this.gets.get(id!) ?? 0) + 1;
-      this.gets.set(id!, n);
-      this.getHook.get(id!)?.(n);
-      return ok({
-        pane: { pane_id: id, agent: pane.status === "shell" ? null : (pane.agent ?? "pi"), agent_status: pane.status },
-      });
-    }
-    if (group === "pane" && verb === "read") {
-      return pane.screen === undefined
-        ? { code: 1, stdout: "", stderr: "read failed" }
-        : { code: 0, stdout: pane.screen, stderr: "" };
-    }
-    if (group === "pane" && verb === "run") {
-      pane.ran.push(String(argv[3]));
-      return ok({});
-    }
-    if (group === "pane" && verb === "send-text") {
-      pane.received.push(String(argv[3]));
-      return ok({});
-    }
-    if (group === "pane" && verb === "send-keys") {
-      if (this.keyFails > 0) {
-        this.keyFails--;
-        return { code: 1, stdout: "", stderr: "key press failed" };
-      }
-      return ok({});
-    }
-    if (group === "agent" && verb === "prompt") {
-      const fail = this.promptFails.get(id!);
-      if (fail) return { code: 1, stdout: "", stderr: fail };
-      pane.received.push(String(argv[3]));
-      return ok({});
-    }
-    if (group === "pane" && verb === "close") {
-      this.panes.delete(id!);
-      return ok({});
-    }
-    return { code: 1, stdout: "", stderr: `unhandled ${argv.join(" ")}` };
+    if (cmd !== "hc") return { stderr: "", ...this.reviewer(argv) };
+    return this.hcExec(argv);
   };
 
-  /** Deps over this world's recorders; `runtime` is the selected one (both are reachable by ref). */
-  deps(opts: { runtime?: RuntimeKind } = {}): Deps {
-    const kind = opts.runtime ?? "herdr";
-    const quiet = { env: {}, sleep: async () => {} };
+  private async hcExec(argv: readonly string[]): Promise<Awaited<ReturnType<Exec>>> {
+    const [, verb, id] = argv;
+    if (verb === "get" && id !== undefined) {
+      const n = (this.gets.get(id) ?? 0) + 1;
+      this.gets.set(id, n);
+      this.getHook.get(id)?.(n);
+    }
+    const before = new Set(this.hc.terminals.keys());
+    const pane = id === undefined ? undefined : this.panes.get(id);
+    if (verb === "send" && id !== undefined) this.beforeSend.get(id)?.();
+    const intoShell = pane?.status === "shell";
+    const broken = verb === "send" && id !== undefined ? this.sendFails.get(id) : undefined;
+    if (broken !== undefined) return { code: 1, stdout: "", stderr: `${broken}\n` };
+    const result = await this.hc.exec("hc", argv);
+    if (verb === "run") {
+      // A terminal hc just started runs the user's shell and nothing else.
+      for (const [address, t] of this.hc.terminals) {
+        if (before.has(address)) continue;
+        const created = new Pane(t);
+        created.status = "shell";
+        this.panes.set(address, created);
+      }
+    }
+    if (verb === "send" && result.code === 0 && pane !== undefined)
+      (intoShell ? pane.ran : pane.received).push(String(argv.at(-1)));
+    if (verb === "rm" && result.code === 0 && id !== undefined) this.panes.delete(id);
+    return result;
+  }
+
+  /** Deps over this world's recorders. */
+  deps(): Deps {
+    const quiet = { env: {}, sleep: async () => {}, log: () => {} };
     return {
       store: new Store(mkdtempSync(join(tmpdir(), "dori-test-"))),
-      runtimes: new Runtimes(kind, (k) =>
-        k === "hc" ? new HcRuntime(this.exec, { ...quiet, log: () => {} }) : new HerdrRuntime(this.exec, "", quiet),
-      ),
-      choice: () => ({ kind, source: "config" }),
+      runtimes: new Runtimes("hc", () => new HcRuntime(this.exec, quiet)),
+      choice: () => ({ kind: "hc", source: "config" }),
       exec: this.exec,
       now: () => this.clock,
       agentCmd: "omo",

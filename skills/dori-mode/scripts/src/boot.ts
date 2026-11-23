@@ -3,7 +3,7 @@ import type { FlowDeps } from "./done-flow.ts";
 import { shellQuote } from "./launch-footer.ts";
 import type { SessionInfo } from "../../../../src/runtime/types.ts";
 import type { Slack } from "./messenger/slack.ts";
-import { driftCheck, workspaceCheck } from "./boot-checks.ts";
+import { driftCheck } from "./boot-checks.ts";
 import { type BootLane, finished, monitorCleanup, readMonitorManifests } from "./boot-monitors.ts";
 import { type Lane, statusOf } from "./registry.ts";
 import { reconcilePanes } from "./reconcile.ts";
@@ -156,9 +156,6 @@ export const bootCheck = async (deps: BootDeps): Promise<{ exitCode: number; lin
     lines.push(...drift.lines);
     if (drift.failed) failed = true;
   }
-  const warnings = workspaceCheck(deps.config, rts.choice?.kind, panes);
-  if (warnings.length) failed = true;
-  lines.push(...warnings);
   lines.push(...journals);
   // The lead's open requests, each with its Next line, so a compacted lead resumes from the record, not from memory.
   try {

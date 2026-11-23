@@ -6,7 +6,7 @@ import { closeLane } from "../src/done-flow.ts";
 import { launchLane, prepareLaunch } from "../src/launch.ts";
 import { Lessons } from "../src/lessons.ts";
 import type { Lane } from "../src/registry.ts";
-import { depsFor, fakeClock, newWorld, withState } from "./fakes.ts";
+import { depsFor, fakeClock, hcCreated, newWorld, withState } from "./fakes.ts";
 
 const T0 = Date.parse("2026-10-29T00:00:00Z");
 const lane: Lane = {
@@ -114,27 +114,21 @@ test("preview is side-effect free and actual launch ships the same prepared brie
       {
         ...deps,
         run: async (argv, opts) =>
-          argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create"
-            ? {
-                code: 0,
-                out: JSON.stringify({ result: { root_pane: { pane_id: "qa:p1" }, tab_id: "qa:t1" } }),
-                err: "",
-              }
-            : deps.run(argv, opts),
+          argv[0] === "hc" && argv[2] === "run" ? hcCreated(world, "qa:p1") : deps.run(argv, opts),
       },
       input,
     );
     // Then byte-for-byte shipped-copy equality protects preview/launch parity.
     expect(readFileSync(brief, "utf8")).toBe(preview.preamble);
     expect(launched.lane.pane).toBe("qa:p1");
-    expect(await deps.registry.read(lane.key)).toMatchObject({ key: lane.key, pane: "qa:p1", tab: "qa:t1" });
+    expect(await deps.registry.read(lane.key)).toMatchObject({ key: lane.key, pane: "qa:p1", tab: "qa:p1" });
   } finally {
     state.done();
   }
 });
 
-test("a retry after a failed tab create ships the same brief, not a second lessons block and footer", async () => {
-  // Given a brief, a lesson, and a herdr whose first tab create fails.
+test("a retry after a failed session create ships the same brief, not a second lessons block and footer", async () => {
+  // Given a brief, a lesson, and an hc whose first run fails.
   const state = withState();
   try {
     const world = newWorld();
@@ -146,10 +140,10 @@ test("a retry after a failed tab create ships the same brief, not a second lesso
     const expected = (await prepareLaunch(deps, input)).preamble;
     let creates = 0;
     const run: typeof deps.run = async (argv, opts) =>
-      argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create"
+      argv[0] === "hc" && argv[2] === "run"
         ? ++creates === 1
           ? { code: 1, out: "", err: "server busy" }
-          : { code: 0, out: JSON.stringify({ result: { root_pane: { pane_id: "qa:p1" }, tab_id: "qa:t1" } }), err: "" }
+          : hcCreated(world, "qa:p1")
         : deps.run(argv, opts);
     // When the first launch fails and the lead runs it again.
     await expect(launchLane({ ...deps, run }, input)).rejects.toThrow("session create failed");
@@ -162,10 +156,11 @@ test("a retry after a failed tab create ships the same brief, not a second lesso
 });
 
 test("a brief that quotes the footer heading mid-file is shipped whole on first launch and on retry", async () => {
-  // Given a copied launched brief with new work below its old footer, a lesson, and a herdr whose first tab create fails.
+  // Given a copied launched brief with new work below its old footer, a lesson, and an hc whose first run fails.
   const state = withState();
   try {
-    const deps = depsFor(newWorld(), fakeClock(T0), state.dir);
+    const world = newWorld();
+    const deps = depsFor(world, fakeClock(T0), state.dir);
     const brief = join(state.dir, "brief.md");
     const original =
       "Perform the fixture work.\n\n## Lane footer (written by dori launch)\n- Key: old-lane. Work thread: none.\n\nThen do the new work below the old footer.";
@@ -178,10 +173,10 @@ test("a brief that quotes the footer heading mid-file is shipped whole on first 
     expect(first).toContain(original);
     let creates = 0;
     const run: typeof deps.run = async (argv, opts) =>
-      argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create"
+      argv[0] === "hc" && argv[2] === "run"
         ? ++creates === 1
           ? { code: 1, out: "", err: "server busy" }
-          : { code: 0, out: JSON.stringify({ result: { root_pane: { pane_id: "qa:p1" }, tab_id: "qa:t1" } }), err: "" }
+          : hcCreated(world, "qa:p1")
         : deps.run(argv, opts);
     // When that launch fails and the lead runs it again.
     await expect(launchLane({ ...deps, run }, input)).rejects.toThrow("session create failed");

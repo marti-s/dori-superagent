@@ -2,20 +2,18 @@ import { describe, expect, test } from "bun:test";
 import { main } from "../src/cli.ts";
 import { dutyTick } from "../src/duty.ts";
 import { send } from "../src/inbox.ts";
-import { World, href } from "./fake.ts";
+import { World, sref } from "./fake.ts";
 
 // #89: a delivery that failed after the text may already have reached the pane is never re-sent blindly.
-
-const NOT_READY = '{"error":{"code":"agent_not_ready"}}';
 
 function setup() {
   const w = new World();
   const d = w.deps();
-  const lead = w.addPane("w1:p1", "idle");
-  d.store.setRole("lead", href("w1:p1"));
-  const count = (pane: string, group: string, verb: string) =>
-    w.calls.filter((c) => c.argv[0] === group && c.argv[1] === verb && c.argv[2] === pane).length;
-  return { w, d, lead, count };
+  const lead = w.addPane("t1", "idle");
+  d.store.setRole("lead", sref("t1"));
+  /** How many `hc send` calls were made for a terminal: each one is an attempt to type the text. */
+  const sends = (pane: string) => w.hcCalls("send", pane).length;
+  return { w, d, lead, sends };
 }
 
 /** Runs the CLI and captures everything it writes: console.log, console.error and raw stderr writes. */
@@ -48,9 +46,9 @@ const HELD_LINE = (target: string) => `HELD ${target}: delivery may or may not h
 function addLane(d: ReturnType<World["deps"]>, key: string, paneId: string): void {
   d.store.saveLane({
     key,
-    sessionRef: { runtime: "herdr", id: paneId, container: "w1:t9" },
+    sessionRef: sref(paneId),
     paneId,
-    tabId: "w1:t9",
+    tabId: paneId,
     brief: "/dev/null",
     cwd: "/",
     status: "working",
@@ -61,85 +59,70 @@ function addLane(d: ReturnType<World["deps"]>, key: string, paneId: string): voi
   });
 }
 
-describe("typed fallback whose Enter failed (#89 A)", () => {
-  test("Enter fails 3 times: the next dutyTick presses only Enter and never types the text again", async () => {
-    const { w, d, lead, count } = setup();
-    w.promptFails.set("w1:p1", NOT_READY);
-    w.keyFails = 3;
-    expect(await send(d, "lead", "IMPORTANT MESSAGE", "cli")).toBe("QUEUED");
-    expect(count("w1:p1", "pane", "send-text")).toBe(1);
-    expect(count("w1:p1", "pane", "send-keys")).toBe(3);
+describe("a typed entry left in the inbox (#89 A)", () => {
+  test("hc never presses a lone Enter: the entry is held, nothing is typed, and the lead is told once", async () => {
+    const { w, d, lead, sends } = setup();
+    const lane = w.addPane("t2", "idle");
+    d.store.saveInbox(sref("t2"), [
+      {
+        at: w.clock - 1,
+        from: "cli",
+        text: "SECRET instruction",
+        attempt: { at: w.clock - 1, state: "typed", detail: "key press failed" },
+      },
+    ]);
 
-    expect(await dutyTick(d)).toEqual([{ pane: "w1:p1", action: "flushed" }]);
-    expect(count("w1:p1", "pane", "send-text")).toBe(1);
-    expect(count("w1:p1", "pane", "send-keys")).toBe(4);
-    expect(w.calls.at(-1)!.argv).toEqual(["pane", "send-keys", "w1:p1", "enter"]);
-    expect(lead.received).toEqual(["IMPORTANT MESSAGE"]);
-    expect(d.store.queued(href("w1:p1"))).toEqual([]);
-
-    expect(await dutyTick(d)).toEqual([]);
-    expect(count("w1:p1", "pane", "send-text")).toBe(1);
-    expect(count("w1:p1", "pane", "send-keys")).toBe(4);
-  });
-
-  test("the pending Enter is held while the agent is suspended with a shell in front, and pressed once it is back", async () => {
-    const { w, d, lead, count } = setup();
-    w.promptFails.set("w1:p1", NOT_READY);
-    w.keyFails = 3;
-    expect(await send(d, "lead", "IMPORTANT MESSAGE", "cli")).toBe("QUEUED");
-
-    // herdr still reports the agent (idle) while its shell is in front: the same agent comes back with its input (#108).
-    lead.foreground = "-zsh";
-    expect(await dutyTick(d)).toContainEqual(expect.objectContaining({ pane: "w1:p1", action: "inbox-held" }));
-    expect(await dutyTick(d)).toContainEqual(expect.objectContaining({ pane: "w1:p1", action: "inbox-held" }));
-    expect(count("w1:p1", "pane", "send-keys")).toBe(3);
-
-    lead.foreground = undefined;
-    expect(await dutyTick(d)).toEqual([{ pane: "w1:p1", action: "flushed" }]);
-    expect(count("w1:p1", "pane", "send-keys")).toBe(4);
-    expect(count("w1:p1", "pane", "send-text")).toBe(1);
+    const ticks = [await dutyTick(d), await dutyTick(d)];
+    for (const events of ticks)
+      expect(events).toContainEqual(expect.objectContaining({ pane: "t2", action: "delivery-ambiguous" }));
+    expect(sends("t2")).toBe(0);
+    expect(w.hcCalls("keys", "t2")).toEqual([]);
+    expect(lane.received).toEqual([]);
+    expect(d.store.queued(sref("t2")).map((m) => m.attempt?.state)).toEqual(["ambiguous"]);
+    const notices = lead.received.filter((m) => m.startsWith("[DELIVERY-AMBIGUOUS t2]"));
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).not.toContain("SECRET");
   });
 });
 
-describe("ambiguous `agent prompt` failure (#89 B)", () => {
-  test("a non-agent_not_ready error: the lead is told exactly once across several dutyTicks and the prompt is not re-sent", async () => {
-    const { w, d, lead, count } = setup();
-    const lane = w.addPane("w1:p2", "idle");
-    w.promptFails.set("w1:p2", "timeout");
-    d.store.enqueue(href("w1:p2"), { at: w.clock, from: "cli", text: "SECRET instruction" });
+describe("ambiguous `hc send` failure (#89 B)", () => {
+  test("a send that failed without saying why: the lead is told exactly once across several dutyTicks and the text is not re-sent", async () => {
+    const { w, d, lead, sends } = setup();
+    const lane = w.addPane("t2", "idle");
+    w.sendFails.set("t2", "timeout");
+    d.store.enqueue(sref("t2"), { at: w.clock, from: "cli", text: "SECRET instruction" });
 
     const ticks = [await dutyTick(d), await dutyTick(d), await dutyTick(d)];
     for (const events of ticks) {
-      expect(events).toContainEqual(expect.objectContaining({ pane: "w1:p2", action: "delivery-ambiguous" }));
+      expect(events).toContainEqual(expect.objectContaining({ pane: "t2", action: "delivery-ambiguous" }));
       expect(events.some((e) => e.action === "flush-failed")).toBe(false);
       expect(JSON.stringify(events)).not.toContain("SECRET");
     }
-    expect(count("w1:p2", "agent", "prompt")).toBe(1);
-    expect(count("w1:p2", "pane", "send-text")).toBe(0);
+    expect(sends("t2")).toBe(1);
     expect(lane.received).toEqual([]);
-    const notices = lead.received.filter((m) => m.includes("w1:p2"));
+    const notices = lead.received.filter((m) => m.includes("t2"));
     expect(notices).toHaveLength(1);
     expect(notices[0]).not.toContain("SECRET");
-    expect(d.store.queued(href("w1:p2"))).toHaveLength(1);
+    expect(d.store.queued(sref("t2"))).toHaveLength(1);
   });
 
   test("an ambiguous failure on the lead's own pane is held and not re-sent, with no notice loop", async () => {
-    const { w, d, lead, count } = setup();
-    w.promptFails.set("w1:p1", "timeout");
+    const { w, d, lead, sends } = setup();
+    w.sendFails.set("t1", "timeout");
     expect(await send(d, "lead", "hello", "cli")).toBe("HELD");
     for (let i = 0; i < 3; i++) await dutyTick(d);
-    w.promptFails.delete("w1:p1");
-    expect(await dutyTick(d)).toContainEqual(expect.objectContaining({ pane: "w1:p1", action: "delivery-ambiguous" }));
-    // one prompt for the message, one for the notice about it; neither is retried
-    expect(count("w1:p1", "agent", "prompt")).toBe(2);
+    w.sendFails.delete("t1");
+    expect(await dutyTick(d)).toContainEqual(expect.objectContaining({ pane: "t1", action: "delivery-ambiguous" }));
+    // one send for the message, one for the notice about it; neither is retried
+    expect(sends("t1")).toBe(2);
     expect(lead.received).toEqual([]);
   });
 });
 
-describe("a pending Enter with newer messages queued (#89 review)", () => {
-  test("send() of the newer message presses only the pending Enter, returns QUEUED, and keeps the newer message queued", async () => {
-    const { w, d, lead, count } = setup();
-    d.store.saveInbox(href("w1:p1"), [
+describe("a typed entry with newer messages queued (#89 review)", () => {
+  test("send() of the newer message holds the typed one, returns QUEUED, and the next pass delivers only the newer one", async () => {
+    const { w, d, lead, sends } = setup();
+    d.store.saveInbox(sref("t1"), [
       {
         at: w.clock - 1,
         from: "cli",
@@ -148,53 +131,47 @@ describe("a pending Enter with newer messages queued (#89 review)", () => {
       },
     ]);
     expect(await send(d, "lead", "SECOND", "cli")).toBe("QUEUED");
-    expect(count("w1:p1", "pane", "send-keys")).toBe(1);
-    expect(count("w1:p1", "agent", "prompt")).toBe(0);
-    expect(d.store.queued(href("w1:p1")).map((m) => m.text)).toEqual(["SECOND"]);
+    expect(w.hcCalls("keys", "t1")).toEqual([]);
+    expect(sends("t1")).toBe(0);
+    expect(d.store.queued(sref("t1")).map((m) => [m.text.slice(0, 6), m.attempt?.state])).toEqual([
+      ["FIRST", "ambiguous"],
+      ["SECOND", undefined],
+      ["[DELIV", undefined],
+    ]);
 
-    expect(await dutyTick(d)).toEqual([{ pane: "w1:p1", action: "flushed" }]);
-    expect(lead.received).toEqual(["SECOND"]);
-    expect(d.store.queued(href("w1:p1"))).toEqual([]);
+    expect(await dutyTick(d)).toContainEqual({ pane: "t1", action: "flushed" });
+    expect(lead.received).toHaveLength(1);
+    expect(lead.received[0]).toContain("SECOND");
+    expect(lead.received[0]).not.toContain("FIRST");
+    expect(d.store.queued(sref("t1")).map((m) => m.text)).toEqual(["FIRST"]);
   });
 });
 
 describe("the CLI on an uncertain first delivery (#89 review)", () => {
-  test("dori send, ambiguous prompt error: prints HELD, exits 3, never shows the text, and holds exactly one entry", async () => {
-    const { w, d, count } = setup();
-    w.addPane("w1:p2", "idle");
-    w.promptFails.set("w1:p2", "timeout");
-    const r = await captureIo(() => main(["send", "w1:p2", "--text", "SECRET instruction"], d));
+  test("dori send, ambiguous send error: prints HELD, exits 3, never shows the text, and holds exactly one entry", async () => {
+    const { w, d, sends } = setup();
+    w.addPane("t2", "idle");
+    w.sendFails.set("t2", "timeout");
+    const r = await captureIo(() => main(["send", "t2", "--text", "SECRET instruction"], d));
     expect(r.code).toBe(3);
-    expect(r.out).toBe(HELD_LINE("w1:p2"));
+    expect(r.out).toBe(HELD_LINE("t2"));
     expect(r.out + r.err).not.toContain("SECRET");
-    const held = d.store.queued(href("w1:p2"));
+    const held = d.store.queued(sref("t2"));
     expect(held).toHaveLength(1);
     expect(held[0]!.attempt?.state).toBe("ambiguous");
-    expect(count("w1:p2", "agent", "prompt")).toBe(1);
-  });
-
-  test("dori send, typed text whose Enter failed: prints QUEUED and exits 0 with one typed entry", async () => {
-    const { w, d } = setup();
-    w.addPane("w1:p2", "idle");
-    w.promptFails.set("w1:p2", NOT_READY);
-    w.keyFails = 3;
-    const r = await captureIo(() => main(["send", "w1:p2", "--text", "SECRET instruction"], d));
-    expect(r.code).toBe(0);
-    expect(r.out).toBe("QUEUED w1:p2");
-    expect(r.out + r.err).not.toContain("SECRET");
-    expect(d.store.queued(href("w1:p2")).map((m) => m.attempt?.state)).toEqual(["typed"]);
+    expect(sends("t2")).toBe(1);
   });
 
   test("dori report, ambiguous delivery to the lead: no crash, prints HELD for the lead, exits 3, report held once", async () => {
     const { w, d } = setup();
-    addLane(d, "fix-x", "w1:p2");
-    w.addPane("w1:p2", "working");
-    w.promptFails.set("w1:p1", "timeout");
+    addLane(d, "fix-x", "t2");
+    w.addPane("t2", "working");
+    w.sendFails.set("t1", "timeout");
     const r = await captureIo(() => main(["report", "fix-x", "--text", "SECRET progress"], d));
     expect(r.code).toBe(3);
     expect(r.out).toBe(`REPORTED fix-x\n${HELD_LINE("lead")}`);
     expect(r.out + r.err).not.toContain("SECRET");
-    const fromLane = d.store.queued(href("w1:p1")).filter((m) => m.from === "fix-x");
+    const fromLane = d.store.queued(sref("t1")).filter((m) => m.from === "fix-x");
     expect(fromLane).toHaveLength(1);
     expect(fromLane[0]!.attempt?.state).toBe("ambiguous");
     expect(d.store.lane("fix-x")!.log.at(-1)).toMatchObject({ kind: "report", text: "SECRET progress" });
@@ -202,29 +179,28 @@ describe("the CLI on an uncertain first delivery (#89 review)", () => {
 
   test("dori ready, ambiguous delivery to the lead: no crash, prints HELD for the lead, exits 3, READY recorded", async () => {
     const { w, d } = setup();
-    addLane(d, "fix-x", "w1:p2");
-    w.addPane("w1:p2", "idle");
-    w.promptFails.set("w1:p1", "timeout");
+    addLane(d, "fix-x", "t2");
+    w.addPane("t2", "idle");
+    w.sendFails.set("t1", "timeout");
     const r = await captureIo(() =>
       main(["ready", "fix-x", "--text", "SECRET answer", "--evidence", "https://example.com/pr/1"], d),
     );
     expect(r.code).toBe(3);
     expect(r.out).toBe(`READY fix-x\n${HELD_LINE("lead")}`);
     expect(r.out + r.err).not.toContain("SECRET");
-    expect(d.store.queued(href("w1:p1")).filter((m) => m.from === "fix-x")).toHaveLength(1);
+    expect(d.store.queued(sref("t1")).filter((m) => m.from === "fix-x")).toHaveLength(1);
     expect(d.store.lane("fix-x")!.status).toBe("ready");
   });
 });
 
 describe("control", () => {
-  test("normal delivery is unchanged: delivered once through agent prompt, nothing typed, inbox empty", async () => {
-    const { d, lead, count } = setup();
+  test("normal delivery is unchanged: delivered once through one hc send, inbox empty", async () => {
+    const { d, lead, sends } = setup();
     expect(await send(d, "lead", "hello", "cli")).toBe("DELIVERED");
     expect(lead.received).toEqual(["hello"]);
-    expect(count("w1:p1", "agent", "prompt")).toBe(1);
-    expect(count("w1:p1", "pane", "send-text")).toBe(0);
-    expect(d.store.queued(href("w1:p1"))).toEqual([]);
+    expect(sends("t1")).toBe(1);
+    expect(d.store.queued(sref("t1"))).toEqual([]);
     expect(await dutyTick(d)).toEqual([]);
-    expect(count("w1:p1", "agent", "prompt")).toBe(1);
+    expect(sends("t1")).toBe(1);
   });
 });

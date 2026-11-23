@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { freshnessTick } from "../src/freshness.ts";
 import { launchLane } from "../src/launch.ts";
 import type { Lane } from "../src/registry.ts";
-import { depsFor, fakeClock, newWorld, withState, type World } from "./fakes.ts";
+import { depsFor, fakeClock, hcCreated, hcListed, newWorld, withState, type World } from "./fakes.ts";
 
 const T0 = Date.parse("2026-01-01T12:00:00.000Z");
 
@@ -42,23 +42,10 @@ test("launch reports STARTUP_OK only on a ready agent status that shows a goal; 
     const deps = {
       ...base,
       run: async (argv: readonly string[]) => {
-        if (argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create")
-          return {
-            code: 0,
-            out: JSON.stringify({ result: { root_pane: { pane_id: "w:p9" }, tab_id: "w:t9" } }),
-            err: "",
-          };
-        if (argv[0] === "herdr" && argv[1] === "pane" && argv[2] === "list") {
+        if (argv[0] === "hc" && argv[2] === "run") return hcCreated(world, "w:p9");
+        if (argv[0] === "hc" && argv[2] === "ls" && world.terminals["w:p9"]) {
           const s = statuses.length > 1 ? statuses.shift() : statuses[0];
-          return {
-            code: 0,
-            out: JSON.stringify({
-              result: {
-                panes: [{ pane_id: "w:p9", workspace_id: "w", ...(s ? { agent: "pi", agent_status: s } : {}) }],
-              },
-            }),
-            err: "",
-          };
+          return hcListed("w:p9", s);
         }
         return inner(argv);
       },
@@ -143,20 +130,8 @@ test("STARTUP_NO_GOAL names the time the launch really waited, not the planned 1
   const deps = {
     ...base,
     run: async (argv: readonly string[]) => {
-      if (argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create")
-        return {
-          code: 0,
-          out: JSON.stringify({ result: { root_pane: { pane_id: "w:p9" }, tab_id: "w:t9" } }),
-          err: "",
-        };
-      if (argv[0] === "herdr" && argv[1] === "pane" && argv[2] === "list")
-        return {
-          code: 0,
-          out: JSON.stringify({
-            result: { panes: [{ pane_id: "w:p9", workspace_id: "w", agent: "pi", agent_status: "idle" }] },
-          }),
-          err: "",
-        };
+      if (argv[0] === "hc" && argv[2] === "run") return hcCreated(world, "w:p9");
+      if (argv[0] === "hc" && argv[2] === "ls" && world.terminals["w:p9"]) return hcListed("w:p9", "idle");
       return inner(argv);
     },
   };
@@ -173,14 +148,8 @@ test("launch registers the lane before it starts the agent, so the lane's first 
   const deps = {
     ...base,
     run: async (argv: readonly string[]) => {
-      if (argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create")
-        return {
-          code: 0,
-          out: JSON.stringify({ result: { root_pane: { pane_id: "w:p9" }, tab_id: "w:t9" } }),
-          err: "",
-        };
-      if (argv[0] === "herdr" && argv[1] === "pane" && argv[2] === "run")
-        atStart = await base.registry.read("fast-lane");
+      if (argv[0] === "hc" && argv[2] === "run") return hcCreated(world, "w:p9");
+      if (argv[0] === "hc" && argv[2] === "send") atStart = await base.registry.read("fast-lane");
       return base.run(argv);
     },
   };
@@ -197,12 +166,7 @@ test("the harness launch record is not the lane's report: a silent launched lane
   const deps = {
     ...base,
     run: async (argv: readonly string[]) => {
-      if (argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create")
-        return {
-          code: 0,
-          out: JSON.stringify({ result: { root_pane: { pane_id: "w:p9" }, tab_id: "w:t9" } }),
-          err: "",
-        };
+      if (argv[0] === "hc" && argv[2] === "run") return hcCreated(world, "w:p9");
       return base.run(argv);
     },
   };

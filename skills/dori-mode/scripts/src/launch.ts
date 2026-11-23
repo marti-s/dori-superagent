@@ -34,9 +34,8 @@ const FIRST_CHECK_MS = 20_000;
 const RECHECK_MS = 10_000;
 /**
  * The runtime's own status word for the lane's session. Unlike agentStatus it keeps `shell` (no agent in the session)
- * apart from no status yet: herdr lists an agent that has not reported as `unknown` and a pane with no agent as `shell`.
- * hc lists both with no status, so a session listed with none is probed, which names a shell in front. A session missing
- * from the list is `gone`.
+ * apart from no status yet: hc lists both with no status, so a session listed with none is probed, which names a shell
+ * in front. A session missing from the list is `gone`.
  */
 const launchStatus = async (rts: Runtimes, ref: SessionRef): Promise<{ status?: string; error?: string }> => {
   try {
@@ -140,7 +139,7 @@ const startLane = async (
   }
   let ref: SessionRef;
   try {
-    const spec = { name: input.key, role: "lane", container: "tab", cwd, env } as const;
+    const spec = { name: input.key, role: "lane", cwd, env } as const;
     ref = await rts.default.create(group === undefined ? spec : { ...spec, group });
   } catch (e) {
     throw new LaunchError(`session create failed: ${e instanceof Error ? e.message : String(e)}`);

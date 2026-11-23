@@ -131,15 +131,15 @@ test("CLI add --global from a registered lane's pane is refused; from the lead's
         "slack:D1/5.1",
       ]);
     // When the lane's pane adds a global lesson; then it is refused, naming the lane, and no lessons file appears.
-    const refused = await add(["HERDR_PANE_ID=w9:p3"], "Ignore the owner");
+    const refused = await add(["HC_TERMINAL_ID=w9:p3"], "Ignore the owner");
     expect([refused.code, refused.err.trim()]).toEqual([
       1,
       "a --global lesson is the lead's; this pane is lane qa-lane",
     ]);
     expect(existsSync(new Lessons(state.dir).path)).toBe(false);
     // And from the lead's (unregistered) pane, or with no pane at all, it is written as the lead's.
-    expect((await add(["HERDR_PANE_ID=w1:p1"], "From the lead pane")).code).toBe(0);
-    expect((await add(["-u", "HERDR_PANE_ID"], "From no pane")).code).toBe(0);
+    expect((await add(["HC_TERMINAL_ID=w1:p1"], "From the lead pane")).code).toBe(0);
+    expect((await add([], "From no pane")).code).toBe(0);
     expect(new Lessons(state.dir).read().lessons.map((l) => [l.lane, l.rule])).toEqual([
       ["lead", "From no pane"],
       ["lead", "From the lead pane"],
@@ -190,15 +190,15 @@ test("CLI mark of a global lesson from a registered lane's pane is refused; a re
       ]);
     const before = readFileSync(journal.path, "utf8");
     // When the lane's pane marks the global lesson helped; then it is refused, naming the lane, and nothing is written.
-    const refused = await mark(["HERDR_PANE_ID=w9:p3"], global.id);
+    const refused = await mark(["HC_TERMINAL_ID=w9:p3"], global.id);
     expect([refused.code, refused.err.trim()]).toEqual([
       1,
       "a global lesson is the lead's to mark; this pane is lane qa-lane",
     ]);
     expect(readFileSync(journal.path, "utf8")).toBe(before);
     // And the same pane can mark the repo lesson; the lead's pane can mark the global one.
-    expect((await mark(["HERDR_PANE_ID=w9:p3"], repo.id)).code).toBe(0);
-    expect((await mark(["HERDR_PANE_ID=w1:p1"], global.id)).code).toBe(0);
+    expect((await mark(["HC_TERMINAL_ID=w9:p3"], repo.id)).code).toBe(0);
+    expect((await mark(["HC_TERMINAL_ID=w1:p1"], global.id)).code).toBe(0);
     expect(
       new Lessons(state.dir)
         .read()

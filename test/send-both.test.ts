@@ -2,77 +2,47 @@ import { describe, expect, test } from "bun:test";
 import { dutyTick } from "../src/duty.ts";
 import { Refusal } from "../src/refusal.ts";
 import { send } from "../src/inbox.ts";
-import { parseRef, type RuntimeKind } from "../src/runtime/types.ts";
-import { terminal } from "./fake-hc.ts";
-import { World } from "./fake.ts";
+import type { AgentStatus } from "../src/runtime/types.ts";
+import { World, sref } from "./fake.ts";
 
-type State = "idle" | "working" | "shell" | "gone";
-
-/** One session in the given state on either runtime, and what reached it. */
-function rig(kind: RuntimeKind) {
+/** Terminal t7 in the given state (absent when gone), and the deps to send to it. */
+function rig(state: AgentStatus) {
   const w = new World();
-  const d = w.deps({ runtime: kind });
-  const place = (state: State): { target: string; set: (s: State) => void; received: () => string[] } => {
-    if (kind === "herdr") {
-      if (state !== "gone") w.addPane("w1:p7", state);
-      return {
-        target: "w1:p7",
-        set: (s) => {
-          const p = w.panes.get("w1:p7");
-          if (p && s !== "gone") p.status = s;
-        },
-        received: () => w.panes.get("w1:p7")?.received ?? [],
-      };
-    }
-    const shape = {
-      idle: terminal(),
-      working: terminal({ status: { state: "working", app: "omo" } }),
-      shell: terminal({ status: null, reported: false, foreground: { name: "bash", argv: ["bash"], pid: 7 } }),
-    };
-    if (state !== "gone") w.hc.terminals.set("t7", shape[state]);
-    return {
-      target: "hc:t7",
-      set: (s) => void (s !== "gone" && w.hc.terminals.set("t7", { ...shape[s], turn: 9 })),
-      received: () => w.hc.sent.filter((m) => m.id === "t7").map((m) => m.text),
-    };
-  };
-  return { w, d, place };
+  const d = w.deps();
+  const pane = state === "gone" ? undefined : w.addPane("t7", state);
+  return { w, d, pane };
 }
 
-describe.each(["herdr", "hc"] as const)("send on %s (IS-2)", (kind) => {
+// The same terminal addressed bare and with its runtime prefix: both name hc terminal t7.
+describe.each(["t7", "hc:t7"] as const)("send to %s (IS-2)", (target) => {
   test("an idle agent: DELIVERED at once", async () => {
-    const { d, place } = rig(kind);
-    const s = place("idle");
-    expect(await send(d, s.target, "hello", "cli")).toBe("DELIVERED");
-    expect(s.received()).toEqual(["hello"]);
+    const { d, pane } = rig("idle");
+    expect(await send(d, target, "hello", "cli")).toBe("DELIVERED");
+    expect(pane?.received).toEqual(["hello"]);
   });
 
   test("a working agent: QUEUED, nothing typed, delivered by the duty pass once it is idle", async () => {
-    const { d, place } = rig(kind);
-    const s = place("working");
-    expect(await send(d, s.target, "later", "cli")).toBe("QUEUED");
-    expect(s.received()).toEqual([]);
-    s.set("idle");
-    expect(await dutyTick(d)).toContainEqual({ pane: s.target, action: "flushed" });
-    expect(s.received()).toEqual(["later"]);
+    const { d, pane } = rig("working");
+    expect(await send(d, target, "later", "cli")).toBe("QUEUED");
+    expect(pane?.received).toEqual([]);
+    if (pane) pane.status = "idle";
+    expect(await dutyTick(d)).toContainEqual({ pane: "t7", action: "flushed" });
+    expect(pane?.received).toEqual(["later"]);
   });
 
   test("a bare shell: held in the inbox as no-agent, never typed (#66)", async () => {
-    const { d, place } = rig(kind);
-    const s = place("shell");
-    expect(await send(d, s.target, "rm -rf nothing", "cli")).toBe("QUEUED");
-    expect(s.received()).toEqual([]);
+    const { d, pane } = rig("shell");
+    expect(await send(d, target, "rm -rf nothing", "cli")).toBe("QUEUED");
+    expect(pane?.ran).toEqual([]);
     const events = await dutyTick(d);
-    expect(events).toContainEqual(expect.objectContaining({ pane: s.target, action: "inbox-held" }));
-    expect(d.store.queued(parseRef(s.target)!).map((m) => m.text)).toEqual(["rm -rf nothing"]);
+    expect(events).toContainEqual(expect.objectContaining({ pane: "t7", action: "inbox-held" }));
+    expect(d.store.queued(sref("t7")).map((m) => m.text)).toEqual(["rm -rf nothing"]);
   });
 
   test("a gone session: Refusal, the message kept in its inbox", async () => {
-    const { d, place } = rig(kind);
-    const s = place("gone");
-    const target = kind === "herdr" ? "w1:p9" : "hc:t9";
+    const { w, d } = rig("gone");
     await expect(send(d, target, "anyone?", "cli")).rejects.toThrow(Refusal);
-    expect(s.received()).toEqual([]);
-    expect(d.store.queued(parseRef(target)!)).toHaveLength(1);
+    expect(w.hcCalls("send")).toEqual([]);
+    expect(d.store.queued(sref("t7"))).toHaveLength(1);
   });
 });

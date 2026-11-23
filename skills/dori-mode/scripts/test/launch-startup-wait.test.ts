@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launchLane } from "../src/launch.ts";
-import { depsFor, fakeClock, newWorld, withState, type World } from "./fakes.ts";
+import { depsFor, fakeClock, hcCreated, hcListed, newWorld, withState, type World } from "./fakes.ts";
 import type { HcTerm } from "./hc-runner.ts";
 
 const OMO = { name: "omo", argv: ["omo"], pid: 4242 };
@@ -35,7 +35,8 @@ test("an agent that has not reported is waited for until startupWaitSeconds; a l
   const brief = join(state.dir, "brief.md");
   writeFileSync(brief, "# brief\n");
   let waits = 0;
-  // herdr lists an agent that has not reported as "unknown", and a pane with no agent (undefined here) as a shell.
+  // A status word hc does not know reads "unknown"; a terminal listed with no status (undefined here) is probed, which
+  // finds the shell the terminal was created with.
   const run = async (
     status: (string | undefined)[],
     screen: string | string[],
@@ -51,21 +52,11 @@ test("an agent that has not reported is waited for until startupWaitSeconds; a l
     const deps = {
       ...base,
       run: async (argv: readonly string[]) => {
-        if (argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create")
-          return {
-            code: 0,
-            out: JSON.stringify({ result: { root_pane: { pane_id: "w:p9" }, tab_id: "w:t9" } }),
-            err: "",
-          };
-        if (argv[0] === "herdr" && argv[1] === "pane" && argv[2] === "list") {
+        if (argv[0] === "hc" && argv[2] === "run") return hcCreated(world, "w:p9");
+        if (argv[0] === "hc" && argv[2] === "ls" && world.terminals["w:p9"]) {
           const s = statuses.length > 1 ? statuses.shift() : statuses[0];
-          if (s === LOOKUP_ERROR) return { code: 1, out: "", err: "herdr is not running" };
-          const agent = s ? { agent: "pi", agent_status: s } : {};
-          return {
-            code: 0,
-            out: JSON.stringify({ result: { panes: [{ pane_id: "w:p9", workspace_id: "w", ...agent }] } }),
-            err: "",
-          };
+          if (s === LOOKUP_ERROR) return { code: 1, out: "", err: "hc is not running" };
+          return hcListed("w:p9", s);
         }
         return base.run(argv);
       },
@@ -77,10 +68,12 @@ test("an agent that has not reported is waited for until startupWaitSeconds; a l
   expect(
     await run(["unknown", "unknown", "unknown", "idle"], ["PS> & omo", "PS> & omo", "PS> & omo", goal], "slow"),
   ).toBe("STARTUP_OK slow w:p9");
-  // Every startup read asks herdr for the unwrapped screen, so a wrapped warning stays one line (#202).
-  const reads = world.calls.filter((c) => c[0] === "herdr" && c[1] === "pane" && c[2] === "read");
-  expect(reads.length).toBe(4);
-  expect(reads.every((c) => c.at(-1) === "recent-unwrapped")).toBe(true);
+  // Every startup read is unwrapped: the read is followed by a lookup of the terminal's width, so a wrapped warning
+  // stays one line (#202).
+  const hcCalls = world.calls.filter((c) => c[0] === "hc");
+  const afterRead = hcCalls.flatMap((c, i) => (c[2] === "read" ? [hcCalls[i + 1]] : []));
+  expect(afterRead.length).toBe(4);
+  expect(afterRead.every((next) => next?.[2] === "get" && next[3] === "w:p9")).toBe(true);
   // An agent that never comes up is unconfirmed after the whole wait (20 s, then sixteen 10 s re-reads), never OK.
   expect(await run(["unknown"], "PS> & omo", "never")).toStartWith(
     "STARTUP_UNCONFIRMED never w:p9: no ready agent status (unknown) after",

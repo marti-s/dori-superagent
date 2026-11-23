@@ -159,13 +159,11 @@ export const closeLane = async (
   return { closed: true, lines: [...lines, `CLOSED ${lane.key} ${JSON.stringify(receipt)}`] };
 };
 
-/** Closes the lane's tab when it has one, else its session; a failed close is named in the receipt, never thrown. */
+/** Closes the lane's session; a failed close is named in the receipt, never thrown. */
 const closeSession = async (deps: FlowDeps, ref: SessionRef): Promise<string> => {
-  const what = ref.container ? `tab ${ref.container}` : `pane ${ref.id}`;
+  const what = `pane ${ref.id}`;
   try {
-    await runtimesOf(deps)
-      .for(ref)
-      .close(ref, ref.container ? "container" : "session");
+    await runtimesOf(deps).for(ref).close(ref);
     return `${what} closed`;
   } catch {
     return `${what} not closed`;

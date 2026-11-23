@@ -22,7 +22,6 @@ export const lane: CreateSpec = {
   cwd: "/w",
   env: { A: "1", B: "it's a b" },
   role: "lane",
-  container: "tab",
   group: "g1",
 };
 export const SH = { SHELL: "/bin/zsh" };

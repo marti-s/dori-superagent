@@ -16,40 +16,25 @@ function renderPrompt(d: Deps, name: string): string {
   return out;
 }
 
-/**
- * Opens lead, duty, the duty loop and the hourly loop on the selected runtime and registers all four roles. herdr: the
- * lead is a new workspace's root pane, duty a tab in it, the loops splits below duty. hc: four terminals labelled with
- * this home's group.
- */
+/** Opens lead, duty, the duty loop and the hourly loop as four hc terminals labelled with this home's group, and registers all four roles. */
 export async function up(d: Deps, cwd: string): Promise<void> {
   const rt = d.runtimes.default;
   const env = { DORI_HOME: d.store.root };
   const agent = (name: string) => `${d.agentCmd} --append-system-prompt ${shq(renderPrompt(d, name))}`;
-  // herdr ignores the group of a workspace-root session and reports the new workspace as the lead ref's group.
-  const lead = await openSession(
-    rt,
-    { name: "dori", role: "lead", container: "workspace-root", cwd, env: {}, group: groupId(d.store.root) },
-    agent("lead.md"),
-  );
+  const group = groupId(d.store.root);
+  const lead = await openSession(rt, { name: "dori", role: "lead", cwd, env: {}, group }, agent("lead.md"));
   d.store.setRole("lead", lead);
-  const group = lead.group;
-  const inGroup = group === undefined ? {} : { group };
-  const duty = await openSession(
-    rt,
-    { name: "duty", role: "duty", container: "tab", cwd, env, ...inGroup },
-    agent("duty.md"),
-  );
+  const duty = await openSession(rt, { name: "duty", role: "duty", cwd, env, group }, agent("duty.md"));
   d.store.setRole("duty", duty);
   const loop = await openSession(
     rt,
-    { name: "duty-loop", role: "duty-loop", container: "split-below", near: duty, cwd, env, ...inGroup },
+    { name: "duty-loop", role: "duty-loop", cwd, env, group },
     `${d.doriCmd} duty --interval 60`,
   );
   d.store.setRole("duty-loop", loop);
-  const hourlyEnv = rt.kind === "herdr" && group !== undefined ? { ...env, HERDR_WORKSPACE_ID: group } : env;
   const hourly = await openSession(
     rt,
-    { name: "hourly-loop", role: "hourly-loop", container: "split-below", near: loop, cwd, env: hourlyEnv, ...inGroup },
+    { name: "hourly-loop", role: "hourly-loop", cwd, env, group },
     `${d.doriCmd} loop`,
   );
   d.store.setRole("hourly-loop", hourly);

@@ -10,7 +10,7 @@ const SCREEN_LINES = 60;
 
 /**
  * Every session of every runtime in use: the selected kind, each kind a registered lane lives on, and any kind built
- * so far. `group` keeps only the sessions of that group (a herdr workspace, an hc `dori.group` label).
+ * so far. `group` keeps only the sessions of that group (an hc `dori.group` label).
  */
 export const listSessions = async (
   rts: Runtimes,
@@ -34,7 +34,7 @@ export const listSessions = async (
 /**
  * The sessions of the watched groups, each group listed by name; every session when none is watched. hc names a
  * session's group only when it is asked for that group (its `dori.group` label), so listing everything and filtering
- * by `ref.group` would drop every hc session (#196); herdr lists by workspace either way. A session is kept once.
+ * by `ref.group` would drop every session (#196). A session is kept once.
  */
 export const listWatched = async (
   rts: Runtimes,

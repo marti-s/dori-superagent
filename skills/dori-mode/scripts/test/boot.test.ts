@@ -98,9 +98,7 @@ test("boot reports vanished panes, journals and stale watches, and writes nothin
   expect(result.lines).toContain('STOP in the owner session only: kill_bash({"bash_id":"mon_REALFIXTURE"})');
   expect(result.lines.some((l) => l.startsWith("VANISHED closed"))).toBe(false);
   expect(snapshot(state.dir)).toEqual(before);
-  expect(world.calls.every((c) => c[0] === "herdr" && c[1] === "pane" && ["list", "get"].includes(c[2] ?? ""))).toBe(
-    true,
-  );
+  expect(world.calls.every((c) => c[0] === "hc" && ["ls", "get"].includes(c[2] ?? ""))).toBe(true);
 });
 
 test("boot on a state dir with no lanes directory leaves it byte-identical", async () => {
@@ -201,7 +199,7 @@ test("a journal-done lane whose pane is gone is finished in both checks: not VAN
 });
 
 test("a failed pane list stays unknown instead of declaring every lane vanished", async () => {
-  // Given herdr failing to list panes.
+  // Given hc failing to list terminals.
   const world = newWorld();
   const deps = bootDeps(world);
   await deps.registry.write(lane("active"));
@@ -215,9 +213,9 @@ test("a failed pane list stays unknown instead of declaring every lane vanished"
 
 test("boot prints the runtime and where its choice came from as its first line", async () => {
   const world = newWorld();
-  const deps = { ...bootDeps(world), env: { DORI_RUNTIME: "herdr" } };
+  const deps = { ...bootDeps(world), env: { DORI_RUNTIME: "hc" } };
   const result = await bootCheck(deps);
-  expect(result.lines[0]).toBe("RUNTIME herdr (from env)");
+  expect(result.lines[0]).toBe("RUNTIME hc (from env)");
   expect(result.exitCode).toBe(0);
 });
 

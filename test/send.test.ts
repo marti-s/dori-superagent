@@ -4,9 +4,9 @@ import { dutyTick } from "../src/duty.ts";
 import { send } from "../src/inbox.ts";
 import { report, startLane } from "../src/lanes.ts";
 import { setup } from "./harness-setup.ts";
-import { href } from "./fake.ts";
+import { sref } from "./fake.ts";
 
-const lead1 = href("w1:p1");
+const lead1 = sref("t1");
 
 describe("pane messaging", () => {
   test("a busy lead is never interrupted: messages queue and arrive as one batch when it goes idle", async () => {
@@ -19,57 +19,25 @@ describe("pane messaging", () => {
     expect(lead.received).toEqual([]);
     lead.status = "idle";
     const events = await dutyTick(d);
-    expect(events).toContainEqual({ pane: "w1:p1", action: "flushed" });
+    expect(events).toContainEqual({ pane: "t1", action: "flushed" });
     expect(lead.received).toHaveLength(1);
     expect(lead.received[0]).toContain("2 messages arrived while you were busy");
     expect(lead.received[0]).toContain("[REPORT a-lane] tests red, investigating");
     expect(lead.received[0]).toContain("second note");
   });
 
-  test("an omo pane that herdr refuses `agent prompt` for (agent_not_ready) still gets the text typed in", async () => {
+  test("an `hc send` failure that names no reason is ambiguous, whatever the message itself mentions", async () => {
     const { w, d, lead } = setup();
-    w.promptFails.set("w1:p1", '{"error":{"code":"agent_not_ready"}}');
-    expect(await send(d, "lead", "hello\n\nlead", "cli")).toBe("DELIVERED");
-    expect(lead.received).toEqual(["hello / lead"]);
-    expect(w.calls).toContainEqual({ cmd: "herdr", argv: ["pane", "send-keys", "w1:p1", "enter"] });
-  });
-
-  test("a failing Enter is retried without typing the text again; after 3 failures the text is reported typed", async () => {
-    const { w, d, lead } = setup();
-    const enters = () => w.calls.filter((c) => c.argv[1] === "send-keys").length;
-    w.promptFails.set("w1:p1", '{"error":{"code":"agent_not_ready"}}');
-    w.keyFails = 2;
-    expect(await d.runtimes.for(lead1).deliver(lead1, "once")).toEqual({ kind: "delivered" });
-    expect(lead.received).toEqual(["once"]);
-    expect(enters()).toBe(3);
-    w.keyFails = 5;
-    const twice = await d.runtimes.for(lead1).deliver(lead1, "twice");
-    expect(twice.kind).toBe("typed");
-    expect(twice.kind === "typed" && String(twice.failure)).toContain("key press failed");
-    expect(lead.received).toEqual(["once", "twice"]);
-    expect(enters()).toBe(6);
-  });
-
-  test("another `agent prompt` failure for a message that merely mentions agent_not_ready is ambiguous", async () => {
-    const { w, d, lead } = setup();
-    w.promptFails.set("w1:p1", "herdr exploded");
-    const out = await d.runtimes.for(lead1).deliver(lead1, "a lane quoted agent_not_ready here");
-    expect(out.kind === "ambiguous" && out.detail).toContain("herdr exploded");
+    w.sendFails.set("t1", "hc exploded");
+    const out = await d.runtimes.for(lead1).deliver(lead1, "a lane quoted status_mismatch here");
+    expect(out.kind === "ambiguous" && out.detail).toContain("hc exploded");
     expect(lead.received).toEqual([]);
   });
 
-  test("the typed fallback trims leading and trailing newlines instead of leaving a dangling ' / '", async () => {
-    const { w, d, lead } = setup();
-    w.promptFails.set("w1:p1", '{"error":{"code":"agent_not_ready"}}');
-    await d.runtimes.for(lead1).deliver(lead1, "\n\nhello\nworld\n\n");
-    expect(lead.received).toEqual(["hello / world"]);
-  });
-
-  test("agent_not_ready on a pane that is now a plain shell types nothing and reports not delivered", async () => {
+  test("a pane that is a plain shell gets nothing typed and reports not delivered", async () => {
     const { w, d } = setup();
-    const shell = w.addPane("w1:p7", "shell");
-    w.promptFails.set("w1:p7", '{"error":{"code":"agent_not_ready"}}');
-    expect(await d.runtimes.for(href("w1:p7")).deliver(href("w1:p7"), "rm -rf nothing")).toEqual({ kind: "no-agent" });
+    const shell = w.addPane("t7", "shell");
+    expect(await d.runtimes.for(sref("t7")).deliver(sref("t7"), "rm -rf nothing")).toEqual({ kind: "no-agent" });
     expect(shell.received).toEqual([]);
   });
 

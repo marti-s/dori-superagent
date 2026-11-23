@@ -6,45 +6,43 @@ import { formatRef, openSession, parseRef } from "../src/runtime/types.ts";
 
 describe("parseRef / formatRef", () => {
   test.each([
-    ["herdr:w1:p3", { runtime: "herdr", id: "w1:p3" }],
     ["hc:t7", { runtime: "hc", id: "t7" }],
-    ["w1:p3", { runtime: "herdr", id: "w1:p3" }],
-    ["wAb:pX9", { runtime: "herdr", id: "wAb:pX9" }],
-    ["t7", undefined],
+    ["t7", { runtime: "hc", id: "t7" }],
     ["hc:t12", { runtime: "hc", id: "t12" }],
+    ["hc:t2h", { runtime: "hc", id: "t2h" }],
+    ["hc:t1b", { runtime: "hc", id: "t1b" }],
+    ["t2h", { runtime: "hc", id: "t2h" }],
     ["t", undefined],
     ["", undefined],
     ["lead", undefined],
-    ["tmux:w1:p3", undefined],
-    ["herdr:t7", undefined],
+    ["tmux:t3", undefined],
+    ["w1:p3", undefined],
+    ["herdr:w1:p3", undefined],
     ["hc:w1:p3", undefined],
     ["hc:", undefined],
-    ["w1:p3 ", undefined],
+    ["hc:hc:t7", undefined],
+    ["t3 ", undefined],
     ["machine/t7", undefined],
-    ["hc:t2h", { runtime: "hc", id: "t2h" }],
-    ["hc:t1b", { runtime: "hc", id: "t1b" }],
     ["hc:box-2/t2h", undefined],
     ["hc:T2H", undefined],
+    ["T2H", undefined],
     ["hc:t2h-", undefined],
     ["hc:/t2h", undefined],
     ["hc:a/b/t2h", undefined],
-    ["t2h", undefined],
   ] as const)("parseRef(%p)", (text, want) => {
     expect(parseRef(text)).toEqual(want);
   });
 
   test.each([
-    ["herdr:w1:p3", { runtime: "herdr", id: "w1:p3" }],
     ["hc:t7", { runtime: "hc", id: "t7" }],
     ["hc:t7 (group dropped)", { runtime: "hc", id: "t7", group: "abcd1234" }],
-    ["herdr:w1:p3 (group and container dropped)", { runtime: "herdr", id: "w1:p3", group: "w1", container: "w1:t2" }],
   ] as const)("formatRef gives %s and parses back", (want, ref) => {
     expect(formatRef(ref)).toBe(want.split(" ")[0] ?? "");
     expect(parseRef(formatRef(ref))).toEqual({ runtime: ref.runtime, id: ref.id });
   });
 });
 
-describe("interactiveShellInFront (#66), ported from the herdr parser", () => {
+describe("interactiveShellInFront (#66)", () => {
   const p = (name: string, ...argv: string[]): ForegroundProcess => ({ name, argv });
   test.each([
     ["login shell", [p("-bash", "-bash")], true],
@@ -98,7 +96,6 @@ describe("Runtimes registry", () => {
     return {
       kind,
       self: () => undefined,
-      createGroup: never,
       create: never,
       start: never,
       list: never,
@@ -130,46 +127,30 @@ describe("Runtimes registry", () => {
     expect(made).toEqual(["hc"]);
   });
 
-  test("routes by the ref's runtime, not the selected one", () => {
+  test("a stored ref is answered by the same runtime as the default, built once", () => {
     const { made, runtimes } = counting();
-    const herdrRef: SessionRef = { runtime: "herdr", id: "w1:p3" };
-    expect(runtimes.for(herdrRef).kind).toBe("herdr");
-    expect(runtimes.for({ runtime: "hc", id: "t7" })).toBe(runtimes.default);
-    expect(runtimes.for(herdrRef)).toBe(runtimes.for(herdrRef));
-    expect(made).toEqual(["herdr", "hc"]);
+    const ref: SessionRef = { runtime: "hc", id: "t3" };
+    expect(runtimes.for(ref).kind).toBe("hc");
+    expect(runtimes.for(ref)).toBe(runtimes.default);
+    expect(made).toEqual(["hc"]);
   });
 });
 
 describe("Runtimes.kinds and selfAny", () => {
-  const make = () => new Runtimes("herdr", (k) => ({ kind: k }) as unknown as SessionRuntime);
+  const make = () => new Runtimes("hc", (k) => ({ kind: k }) as unknown as SessionRuntime);
 
-  test("kinds lists the runtimes built so far, in first-use order", () => {
+  test("kinds lists the runtimes built so far", () => {
     const runtimes = make();
     expect(runtimes.kinds()).toEqual([]);
     runtimes.for({ runtime: "hc", id: "t1" });
     runtimes.default;
-    runtimes.for({ runtime: "hc", id: "t2" });
-    expect(runtimes.kinds()).toEqual(["hc", "herdr"]);
+    expect(runtimes.kinds()).toEqual(["hc"]);
   });
 
   test.each([
     ["an hc terminal", { HC_TERMINAL_ID: "t7" }, { runtime: "hc", id: "t7" }],
-    [
-      "hc wins when both are set",
-      { HC_TERMINAL_ID: "t7", HERDR_PANE_ID: "w1:p3", HERDR_WORKSPACE_ID: "w1" },
-      { runtime: "hc", id: "t7" },
-    ],
-    [
-      "a herdr pane grouped by its workspace",
-      { HERDR_PANE_ID: "w1:p3", HERDR_WORKSPACE_ID: "w1" },
-      { runtime: "herdr", id: "w1:p3", group: "w1" },
-    ],
-    ["a herdr pane without a workspace id has no group", { HERDR_PANE_ID: "w1:p3" }, { runtime: "herdr", id: "w1:p3" }],
-    [
-      "empty variables are unset",
-      { HC_TERMINAL_ID: "", HERDR_PANE_ID: "w2:p1", HERDR_WORKSPACE_ID: "" },
-      { runtime: "herdr", id: "w2:p1" },
-    ],
+    ["an old herdr pane variable names no session", { HERDR_PANE_ID: "w1:p3", HERDR_WORKSPACE_ID: "w1" }, undefined],
+    ["an empty variable is unset", { HC_TERMINAL_ID: "" }, undefined],
     ["outside any runtime", {}, undefined],
   ] as const)("selfAny: %s", (_, env, want) => {
     const runtimes = make();
@@ -185,19 +166,19 @@ describe("openSession", () => {
     const rt = {
       kind: "hc",
       create: async (spec: CreateSpec) => {
-        calls.push(`create ${spec.name} ${spec.container}`);
+        calls.push(`create ${spec.name} ${spec.role}`);
         return ref;
       },
       start: async (r: SessionRef, command: string) => {
         calls.push(`start ${formatRef(r)} ${command}`);
       },
     } as unknown as SessionRuntime;
-    const spec: CreateSpec = { name: "lane-a", cwd: "/w", env: {}, role: "lane", container: "tab" };
+    const spec: CreateSpec = { name: "lane-a", cwd: "/w", env: {}, role: "lane" };
     expect(await openSession(rt, spec, "omo")).toBe(ref);
-    expect(calls).toEqual(["create lane-a tab", "start hc:t9 omo"]);
+    expect(calls).toEqual(["create lane-a lane", "start hc:t9 omo"]);
   });
 
-  test("a failed start closes the session it just created (scope session) and rethrows the start error", async () => {
+  test("a failed start closes the session it just created and rethrows the start error", async () => {
     const calls: string[] = [];
     const rt = {
       create: async () => ({ runtime: "hc", id: "t4" }) as SessionRef,
@@ -205,14 +186,14 @@ describe("openSession", () => {
         calls.push("start");
         throw new Error("send refused");
       },
-      close: async (r: SessionRef, scope?: string) => {
-        calls.push(`close ${formatRef(r)} ${scope}`);
+      close: async (r: SessionRef) => {
+        calls.push(`close ${formatRef(r)}`);
       },
     } as unknown as SessionRuntime;
-    await expect(
-      openSession(rt, { name: "x", cwd: "/", env: {}, role: "lane", container: "tab" }, "omo"),
-    ).rejects.toThrow("send refused");
-    expect(calls).toEqual(["start", "close hc:t4 session"]);
+    await expect(openSession(rt, { name: "x", cwd: "/", env: {}, role: "lane" }, "omo")).rejects.toThrow(
+      "send refused",
+    );
+    expect(calls).toEqual(["start", "close hc:t4"]);
   });
 
   test("a failed create starts nothing", async () => {
@@ -225,9 +206,7 @@ describe("openSession", () => {
         started = true;
       },
     } as unknown as SessionRuntime;
-    await expect(
-      openSession(rt, { name: "x", cwd: "/", env: {}, role: "lead", container: "workspace-root" }, "omo"),
-    ).rejects.toThrow("no space");
+    await expect(openSession(rt, { name: "x", cwd: "/", env: {}, role: "lead" }, "omo")).rejects.toThrow("no space");
     expect(started).toBe(false);
   });
 });
@@ -240,7 +219,7 @@ describe("Runtimes with a lazy choice", () => {
       asked += 1;
       return "hc";
     }, make);
-    expect(rts.for({ runtime: "herdr", id: "w1:p3" }).kind).toBe("herdr");
+    expect(rts.for({ runtime: "hc", id: "t3" }).kind).toBe("hc");
     expect(asked).toBe(0);
     expect(rts.default.kind).toBe("hc");
     expect(asked).toBe(1);

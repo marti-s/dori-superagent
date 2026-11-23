@@ -5,7 +5,7 @@ import { terminal } from "./fake-hc.ts";
 import { rig, T1 } from "./hc-rig.ts";
 
 // #178: omo reports `working` over OSC 7501 while any monitor is live, even between turns. On hc, the probe reads the
-// screen (the herdr runtime's #62 check) and believes `idle` only when omo's idle input is positively on screen.
+// screen (the #62 check) and believes `idle` only when omo's idle input is positively on screen.
 const screen = (name: string): string =>
   readFileSync(join(import.meta.dir, "fixtures", "screens", `${name}.txt`), "utf8");
 const omoWorking = (name?: string) =>

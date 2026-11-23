@@ -129,7 +129,8 @@ export class FakeHc {
     });
     const nameAt = args.indexOf("--name");
     const name = nameAt >= 0 ? args[nameAt + 1] : undefined;
-    const id = `t${this.next++}`;
+    let id = `t${this.next++}`;
+    while (this.terminals.has(id)) id = `t${this.next++}`;
     this.terminals.set(
       id,
       terminal({ labels, status: null, reported: false, turn: 0, ...(name === undefined ? {} : { name }) }),

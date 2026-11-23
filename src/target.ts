@@ -7,14 +7,14 @@ const ROLES_ALL: readonly Role[] = RESERVED_KEYS;
 const isRole = (target: string): target is Role => (ROLES_ALL as readonly string[]).includes(target);
 
 /**
- * Where a send goes, in this order: a prefixed ref (`herdr:w1:p3`, `hc:t7`), a role, an open lane key, a bare herdr
- * pane id (`w1:p3`). A lane named `t7` is that lane; the hc terminal t7 is `hc:t7`.
+ * Where a send goes, in this order: a prefixed ref (`hc:t7`), a role, an open lane key, a bare hc terminal address
+ * (`t7`). A lane named `t7` is that lane; the hc terminal t7 is then `hc:t7`.
  */
 export function resolveTarget(d: Deps, target: string): SessionRef {
-  if (target.startsWith("herdr:") || target.startsWith("hc:")) {
+  if (target.startsWith("hc:")) {
     const ref = parseRef(target);
     if (ref) return ref;
-    throw new Refusal(`${target} is not a session ref (herdr:w1:p3 or hc:t7)`);
+    throw new Refusal(`${target} is not a session ref (hc:t7)`);
   }
   if (isRole(target)) {
     const ref = d.store.roles()[target];
@@ -25,5 +25,5 @@ export function resolveTarget(d: Deps, target: string): SessionRef {
   if (lane && lane.status !== "done") return lane.sessionRef;
   const bare = parseRef(target);
   if (bare) return bare;
-  throw new Refusal(`unknown target ${target}: not a session ref, role or open lane`);
+  throw new Refusal(`unknown target ${target}: not an hc terminal address, role or open lane`);
 }

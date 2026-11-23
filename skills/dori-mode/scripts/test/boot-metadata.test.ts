@@ -115,7 +115,7 @@ test("dori boot reads the current session's terminal metadata from PI_SESSION_DI
     join(fileDir, "b.json"),
     JSON.stringify(manifest([{ command: "dori watch closed", monitorId: "mon_SESSIONFILE" }]).data),
   );
-  // When the real CLI runs boot with no Slack token and no herdr on PATH.
+  // When the real CLI runs boot with no Slack token and no hc on PATH.
   const proc = Bun.spawn([process.execPath, join(import.meta.dir, "..", "src", "cli.ts"), "boot"], {
     env: {
       HOME: home,

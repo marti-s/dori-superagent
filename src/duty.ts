@@ -10,9 +10,8 @@ export const NUDGE_MINUTES = [10, 20, 40] as const;
 
 export type DutyEvent = { lane?: string; pane?: string; action: string; detail?: string };
 
-/** An open lane the duty loop watches; a lane being migrated is left alone (no nudge, no lost, no activity stamp). */
-const watched = (lane: Lane): boolean =>
-  (lane.status === "working" || lane.status === "waiting") && lane.migration !== true;
+/** An open lane the duty loop watches. */
+const watched = (lane: Lane): boolean => lane.status === "working" || lane.status === "waiting";
 
 /** One proactive pass: flush inboxes of panes that became idle, nudge silent lanes, escalate, detect lost panes. */
 export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
@@ -24,18 +23,16 @@ export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
     const paneId = refText(ref);
     try {
       const result = await flushInbox(d, ref);
-      // flushInbox follows a `.forward` marker; the counts are read where the entries live now.
-      const at = d.store.forwardOf(ref) ?? ref;
       if (result === "delivered") events.push({ pane: paneId, action: "flushed" });
       if (result === "no-agent") {
         events.push({
           pane: paneId,
           action: "inbox-held",
-          detail: `no agent in front; ${d.store.queued(at).length} message(s) kept`,
+          detail: `no agent in front; ${d.store.queued(ref).length} message(s) kept`,
         });
       }
       // Held after an ambiguous delivery (#89): shown on every pass, resent never; the lead was told once.
-      const held = d.store.queued(at).filter((m) => m.attempt?.state === "ambiguous").length;
+      const held = d.store.queued(ref).filter((m) => m.attempt?.state === "ambiguous").length;
       if (held > 0)
         events.push({ pane: paneId, action: "delivery-ambiguous", detail: `${held} message(s) held, not resent` });
     } catch (e) {
@@ -50,7 +47,7 @@ export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
     if (!watched(listed)) continue;
     try {
       const { status: st } = await d.runtimes.for(listed.sessionRef).probe(listed.sessionRef);
-      // Re-read right before deciding and saving: a report, a READY or a migration may have landed during the probe.
+      // Re-read right before deciding and saving: a report or a READY may have landed during the probe.
       const lane = d.store.lane(listed.key);
       if (lane === undefined || !watched(lane) || lane.sessionRef.id !== listed.sessionRef.id) continue;
       const now = d.now();

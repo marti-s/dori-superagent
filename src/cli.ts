@@ -10,7 +10,6 @@ import { ConfigError, hooksSettled } from "./hooks.ts";
 import { send, type SendResult } from "./inbox.ts";
 import { inboxList, releaseHeld, sendToShell } from "./inbox-held.ts";
 import { Refusal } from "./refusal.ts";
-import { runMigrate } from "./migrate.ts";
 import { refText } from "./refs.ts";
 import { ConfigError as RuntimeConfigError, RuntimeChoiceError } from "./runtime/select.ts";
 import { parseRef } from "./runtime/types.ts";
@@ -31,7 +30,6 @@ const COMMANDS = new Set([
   "status",
   "loop",
   "backlog",
-  "migrate",
 ]);
 
 /** Prints the line for a delivery that did not land now and returns the exit code: HELD 3, everything else 0. */
@@ -63,8 +61,8 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
       const given = a.pos[2];
       const ref = given === undefined ? d.runtimes.selfAny(process.env) : parseRef(given);
       if (given !== undefined && ref === undefined)
-        throw new Refusal(`${given} is not a session ref (w1:p3, herdr:w1:p3 or hc:t7)`);
-      if (ref === undefined) throw new Refusal(`missing session ref (not inside herdr or hc?)\n\n${USAGE}`);
+        throw new Refusal(`${given} is not a session ref (an hc terminal address: t7 or hc:t7)`);
+      if (ref === undefined) throw new Refusal(`missing session ref (not inside an hc terminal?)\n\n${USAGE}`);
       d.store.setRole(role, ref);
       console.log(`ROLE ${role}=${refText(ref)}`);
       return 0;
@@ -135,8 +133,6 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
       await done(d, need(x, "lane key"));
       console.log(`DONE ${x}`);
       return 0;
-    case "migrate":
-      return runMigrate(d, a);
     case "status":
       status(d);
       return 0;

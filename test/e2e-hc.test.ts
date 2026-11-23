@@ -22,7 +22,7 @@ const laneHome = newHome("lanes");
 let lane = "";
 
 const addressOf = (line: string, key: string): string => {
-  const ref = new RegExp(`${key} pane=hc:(\\S+)`).exec(line)?.[1];
+  const ref = new RegExp(`${key} pane=(\\S+)`).exec(line)?.[1];
   if (ref === undefined) throw new Error(`no hc ref in: ${line}`);
   return ref;
 };
@@ -48,7 +48,7 @@ test.skipIf(!hcBin)(
     expect(up).toContain("UP runtime=hc");
     const status = await dori(home, "status");
     expect(status).toContain("RUNTIME hc (from env)");
-    const lead = /lead=hc:(\S+)/.exec(status)?.[1];
+    const lead = /lead=(\S+)/.exec(status)?.[1];
     expect(lead).toBeDefined();
     const group = ((await terminal(lead ?? ""))["labels"] as Record<string, string>)["dori.group"];
     expect(group).toBeString();
@@ -79,7 +79,7 @@ test.skipIf(!hcBin)(
     expect((t["status"] as Record<string, unknown>)["app"]).toBe("fake");
     expect((t["labels"] as Record<string, string>)["dori.lane"]).toBe("e2e-k");
     expect(await screen(lane)).toContain("kickoff: Read your brief at");
-    expect(await dori(laneHome, "status")).toMatch(new RegExp(`e2e-k\\s+working\\s+hc\\s+hc:${lane}`));
+    expect(await dori(laneHome, "status")).toMatch(new RegExp(`e2e-k\\s+working\\s+hc\\s+${lane}`));
   },
   60_000,
 );

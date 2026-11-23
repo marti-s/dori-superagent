@@ -81,7 +81,7 @@ describe("lifecycle hooks", () => {
       ["my-hook", "ready", "lane-k", "final answer", "https://x/pull/1 receipt.txt"],
     ]);
     const hookAt = w.calls.findIndex((c) => c.cmd === "my-hook");
-    const leadAt = w.calls.findLastIndex((c) => c.argv[0] === "agent" && c.argv[2] === "w1:p1");
+    const leadAt = w.calls.findLastIndex((c) => c.argv[0] === "agent" && c.argv[2] === "t1");
     expect(leadAt).toBeLessThan(hookAt);
   });
 

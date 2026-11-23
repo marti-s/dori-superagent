@@ -58,7 +58,7 @@ const lessonAdd = async (
 const lesson: Command = async (cli) => {
   const { key, positionals, opt, need, deps, config } = cli;
   const lessons = new Lessons(config.stateDir);
-  // The open lane that owns the caller's own session (HC_TERMINAL_ID, else HERDR_PANE_ID). A convenience check:
+  // The open lane that owns the caller's own session (HC_TERMINAL_ID). A convenience check:
   // it stops a lane from adding or reviving a global lesson by accident or on routine instruction. It is not a
   // security boundary, since it reads only those session variables (unsetting them gets past it) and a direct write to
   // lessons.jsonl skips the CLI.

@@ -2,7 +2,6 @@ import type { Exec } from "../exec.ts";
 import { spawnExec } from "../exec.ts";
 import type {
   AgentIdentity,
-  CloseScope,
   CreateSpec,
   DeliverOptions,
   DeliverOutcome,
@@ -44,11 +43,6 @@ export class HcRuntime implements SessionRuntime {
     return selfRef(this.env);
   }
 
-  /** hc has no workspaces: a group is only the `dori.group` label value. */
-  async createGroup(label: string, _cwd: string): Promise<string> {
-    return label;
-  }
-
   create(spec: CreateSpec): Promise<SessionRef> {
     return create(this.exec, spec, this.env["SHELL"] || "sh");
   }
@@ -75,8 +69,8 @@ export class HcRuntime implements SessionRuntime {
 
   /**
    * Always `changed`, touching nothing: hc's send pastes and presses Enter in one step, so it never leaves typed text
-   * waiting for an Enter. A `typed` entry can only come from another runtime (a migrated record), and pressing Enter
-   * here would submit whatever a person has in this input instead (#108).
+   * waiting for an Enter. A `typed` entry can only come from a record another binary wrote, and pressing Enter here
+   * would submit whatever a person has in this input instead (#108).
    */
   async submitTyped(_ref: SessionRef, _into: AgentIdentity): Promise<SubmitResult> {
     return "changed";
@@ -90,8 +84,7 @@ export class HcRuntime implements SessionRuntime {
     return keys(this.exec, ref.id, names);
   }
 
-  /** Kill then remove; hc has no container, so the scope does not change anything. */
-  close(ref: SessionRef, _scope?: CloseScope): Promise<void> {
+  close(ref: SessionRef): Promise<void> {
     return close(this.exec, ref.id, this.sleep, this.log);
   }
 }

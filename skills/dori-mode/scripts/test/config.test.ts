@@ -16,7 +16,7 @@ test("the shipped example config loads, with ~ paths expanded and unset fields d
   expect(c.defaultCwd).toBe("/home/ana/code/my-project");
   expect(c.closeAfterMin).toBe(5);
   expect(c.guard.diskFreeMinGb).toBe(50);
-  expect(c.runtime).toBe("herdr");
+  expect(c.runtime).toBe("hc");
 });
 
 test("a missing config file falls back to defaults and DORI_STATE_DIR wins over the file", async () => {
@@ -89,15 +89,13 @@ test("startupWaitSeconds is a nonnegative number of seconds; anything else falls
   }
 });
 
-test("runtime is herdr, hc or absent; any other value stops the load with ConfigError", async () => {
+test("runtime is hc or absent; any other value, the old herdr included, stops the load with ConfigError", async () => {
   const path = join(state.dir, "config.json");
-  for (const value of ["herdr", "hc"] as const) {
-    await Bun.write(path, JSON.stringify({ runtime: value }));
-    expect((await loadConfig(path, "/home/ana")).runtime).toBe(value);
-  }
+  await Bun.write(path, JSON.stringify({ runtime: "hc" }));
+  expect((await loadConfig(path, "/home/ana")).runtime).toBe("hc");
   await Bun.write(path, JSON.stringify({}));
   expect((await loadConfig(path, "/home/ana")).runtime).toBeUndefined();
-  for (const value of ["x", "HC", "", null, 1, ["hc"]]) {
+  for (const value of ["x", "HC", "herdr", "", null, 1, ["hc"]]) {
     await Bun.write(path, JSON.stringify({ runtime: value }));
     await expect(loadConfig(path, "/home/ana")).rejects.toBeInstanceOf(ConfigError);
   }

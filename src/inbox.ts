@@ -4,7 +4,6 @@ import { Refusal } from "./refusal.ts";
 import { resolveTarget } from "./target.ts";
 import { refText } from "./refs.ts";
 import type { AgentStatus, SessionRef } from "./runtime/types.ts";
-import { migrating } from "./store-journal.ts";
 import type { DeliveryAttempt, QueuedMessage } from "./store-types.ts";
 
 // A session with no running agent (`shell`) is never ready: text typed into a bare shell runs as a command (#66).
@@ -60,17 +59,13 @@ export async function tellLead(d: Deps, text: string, from: string): Promise<"DE
  * Delivers a session's queued messages as one batch. `held`: only messages held after an ambiguous delivery are left;
  * they wait for a person or the lead (#89). `queued` also when another flush of this session holds its inbox lock: one
  * flush per session at a time, across processes (#108). Throws DeliveryUncertain, having recorded the attempt on the
- * queued messages, when the batch may already have reached the session, and Refusal when the session is gone. A
- * session whose inbox was forwarded (a migration) is flushed at its new ref, old entries merged in first.
+ * queued messages, when the batch may already have reached the session, and Refusal when the session is gone.
  */
-export async function flushInbox(d: Deps, from: SessionRef): Promise<"delivered" | "queued" | "no-agent" | "held"> {
-  const ref = d.store.forwardOf(from) ?? from;
-  if (migrating(d.store.root, from) || migrating(d.store.root, ref)) return "queued";
-  if (d.store.queued(ref).length === 0 && !d.store.forwardPending(ref)) return "delivered";
+export async function flushInbox(d: Deps, ref: SessionRef): Promise<"delivered" | "queued" | "no-agent" | "held"> {
+  if (d.store.queued(ref).length === 0) return "delivered";
   const release = d.store.lockInbox(ref, d.now());
   if (!release) return "queued";
   try {
-    d.store.mergeForwarded(ref);
     return await flushLocked(d, ref);
   } finally {
     release();
@@ -83,7 +78,7 @@ async function flushLocked(d: Deps, ref: SessionRef): Promise<"delivered" | "que
   if (all.length === 0) return "delivered";
   const queued = all.filter((m) => m.attempt?.state !== "ambiguous");
   const rt = d.runtimes.for(ref);
-  // The probe carries the #62 screen check on herdr: an omo with live monitors between turns reads idle.
+  // The probe carries the #62 screen check: an omo with live monitors between turns reads idle.
   const { status } = await rt.probe(ref);
   // Before the held check, so a gone session with only held messages says so instead of delivery-ambiguous forever (#108).
   if (status === "gone") throw new Refusal(`pane ${refText(ref)} is gone; ${all.length} message(s) kept in its inbox`);

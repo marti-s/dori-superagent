@@ -67,7 +67,7 @@ test("a stopped agent pane is reported once per hour and the lead pane is never 
   expect(await deadPaneTick(deps.run, deps.config, seen, "2026-01-01T13", st)).toEqual(["DEAD_PANE w:p1"]);
 });
 
-test("with workspaces set, herdr panes are still filtered by their workspace", async () => {
+test("with workspaces set, sessions are still filtered by their group", async () => {
   world.panes = [
     { pane_id: "w:p1", workspace_id: "w" },
     { pane_id: "x:p2", workspace_id: "x" },

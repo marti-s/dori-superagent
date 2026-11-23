@@ -37,7 +37,7 @@ const paneSays = (...screens: string[]) => {
 const paneStatus = (status: string) => {
   for (const pane of world.panes) pane.agent_status = status;
 };
-const escapes = () => world.calls.filter((c) => c[2] === "send-keys" && c[4] === "escape");
+const escapes = () => world.calls.filter((c) => c[2] === "keys" && c[4] === "esc");
 
 test("a paused lane silent past the nudge and post times is neither nudged nor posted", async () => {
   await deps(T0).registry.write({ ...working, status: "paused" });
@@ -60,8 +60,8 @@ test("pause marks the lane paused only once the pane shows the goal paused, then
   expect(lane && statusOf(lane)).toBe("paused");
   expect(lane?.history?.at(-1)).toMatchObject({ status: "paused", note: "owner said wait" });
   expect(sent(world)).toEqual(["/goal pause"]);
-  const goalAt = world.calls.findIndex((c) => c[2] === "send-text");
-  const escAt = world.calls.findIndex((c) => c[2] === "send-keys" && c[4] === "escape");
+  const goalAt = world.calls.findIndex((c) => c[2] === "send");
+  const escAt = world.calls.findIndex((c) => c[2] === "keys" && c[4] === "esc");
   expect(escAt).toBeGreaterThan(goalAt);
   expect((await pauseLane(deps(T0 + 2 * MIN), lane as Lane, "again")).lines[0]).toBe("PAUSED waiting-lane already");
 });

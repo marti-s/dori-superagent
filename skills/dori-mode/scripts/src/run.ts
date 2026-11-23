@@ -1,6 +1,5 @@
 import type { Exec } from "../../../../src/runtime/exec.ts";
 import { HcRuntime } from "../../../../src/runtime/hc/index.ts";
-import { HerdrRuntime } from "../../../../src/runtime/herdr/index.ts";
 import { Runtimes } from "../../../../src/runtime/registry.ts";
 import { type RuntimeChoice, readRuntimeChoice } from "../../../../src/runtime/select.ts";
 import type { RuntimeKind, SessionRuntime } from "../../../../src/runtime/types.ts";
@@ -70,7 +69,7 @@ export class ChosenRuntimes extends Runtimes {
   }
 }
 
-/** `DORI_RUNTIME` > the config's `runtime` > the root's detection (inside hc, inside herdr, hc on PATH, else herdr). */
+/** `DORI_RUNTIME` > the config's `runtime` > the root's detection (inside an hc terminal, else hc on PATH). */
 export const runtimeChoice = (config: Pick<DoriConfig, "runtime">, env: Env): RuntimeChoice => {
   const fromEnv = env["DORI_RUNTIME"];
   if (!fromEnv && config.runtime !== undefined) return { kind: config.runtime, source: "config" };
@@ -89,7 +88,6 @@ export const runtimesFor = (
     return { code: r.code, stdout: r.out, stderr: r.err };
   };
   const make: Record<RuntimeKind, () => SessionRuntime> = {
-    herdr: () => new HerdrRuntime(exec, env["DORI_HERDR_SESSION"], { env, sleep: clock.sleep }),
     hc: () => new HcRuntime(exec, { env, sleep: clock.sleep }),
   };
   return new ChosenRuntimes(

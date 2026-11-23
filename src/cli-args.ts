@@ -1,9 +1,9 @@
 import { Refusal } from "./refusal.ts";
 
-export const USAGE = `dori - a proactive multi-session harness on herdr or hc + omo
+export const USAGE = `dori - a proactive multi-session harness on hc (herdr-core) + omo
 
   dori up [--cwd DIR]                         open lead, duty, duty loop and hourly loop sessions
-  dori role <lead|duty> [REF]                 register a session (w1:p3, herdr:w1:p3, hc:t7) as lead or duty (default: this one)
+  dori role <lead|duty> [REF]                 register an hc terminal (t7) as lead or duty (default: this one)
   dori start <key> --brief FILE [--cwd DIR]   open a lane: new tab, omo session, brief + lane rules
   dori report <key> --text T [--status working|waiting]
   dori ready <key> --text T --evidence LINK [--evidence LINK ...]
@@ -23,9 +23,6 @@ export const USAGE = `dori - a proactive multi-session harness on herdr or hc + 
   dori review <owner/repo#N> [--model M]      fresh omo reviewer at the exact head -> receipt
   dori merge <owner/repo#N> [--dry-run]       CLEAR receipt at head + green checks -> squash merge
   dori done <key>                             lead closes a READY lane
-  dori migrate [--to hc|herdr] (--lane K | --role lead|duty|duty-loop|hourly-loop | --all) [--dry-run]
-               [--wait-minutes N] [--resume]  hand sessions over to another runtime; MIGRATED, SKIP, DEFERRED,
-                                              or MIGRATE_ROLLBACK (exit 3) per session
   dori status
 
 --text may be omitted to read the message from stdin.
@@ -37,7 +34,7 @@ export type Args = { pos: string[]; flags: Map<string, string[]> };
 
 // Flags that never take a value. Every other flag takes the next argument verbatim, even one starting with "--", so a
 // relayed value such as `--from "$SENDER"` or `--text "$MSG"` can never turn into a flag like --to-shell (#66).
-const BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["once", "force", "dry-run", "to-shell", "all", "resume", "help"]);
+const BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["once", "force", "dry-run", "to-shell", "help"]);
 
 export function parse(argv: readonly string[]): Args {
   const pos: string[] = [];

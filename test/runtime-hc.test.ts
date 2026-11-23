@@ -6,7 +6,7 @@ import { openSession } from "../src/runtime/types.ts";
 import { terminal } from "./fake-hc.ts";
 import { lane, rig, SH, T1 } from "./hc-rig.ts";
 
-describe("create / start / createGroup", () => {
+describe("create / start", () => {
   test("create argv is exact: background, no parent, no notes, labels, slug name, env utility then the user's shell", async () => {
     const { fake, rt } = rig({}, SH);
     const ref = await rt.create(lane);
@@ -41,7 +41,7 @@ describe("create / start / createGroup", () => {
 
   test("no group labels dori.group=dori; a non-lane role has no dori.lane label; no SHELL runs sh", async () => {
     const { fake, rt } = rig();
-    const ref = await rt.create({ name: "lead", cwd: "/r", env: {}, role: "lead", container: "workspace-root" });
+    const ref = await rt.create({ name: "lead", cwd: "/r", env: {}, role: "lead" });
     expect(ref).toEqual({ runtime: "hc", id: "t1", group: "dori" });
     expect(fake.calls[1]).toEqual([
       "run",
@@ -75,12 +75,6 @@ describe("create / start / createGroup", () => {
     expect(await openSession(rt, lane, "omo")).toEqual({ runtime: "hc", id: "t1", group: "g1" });
     expect(fake.calls.map((c) => c[0])).toEqual(["ls", "run", "send"]);
     expect(fake.calls[2]).toEqual(["send", "t1", "--", "omo"]);
-  });
-
-  test("createGroup returns the label and makes no call", async () => {
-    const { fake, rt } = rig();
-    expect(await rt.createGroup("abcd1234", "/w")).toBe("abcd1234");
-    expect(fake.calls).toEqual([]);
   });
 
   test("a live terminal holding the slug drops --name (hc names are unique among live terminals)", async () => {

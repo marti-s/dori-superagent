@@ -172,7 +172,7 @@ describe("hourly loop", () => {
   test("failed lane starts are recorded, each uses a slot, and the run still reports what is waiting; with no lead nothing starts", async () => {
     const failing = setup({
       exec: (inner) => async (cmd, argv) =>
-        cmd === "herdr" && argv[0] === "tab" ? { code: 1, stdout: "", stderr: "server down" } : inner(cmd, argv),
+        cmd === "hc" && argv[1] === "run" ? { code: 1, stdout: "", stderr: "server down" } : inner(cmd, argv),
     });
     failing.add("one");
     failing.add("two");
@@ -180,8 +180,8 @@ describe("hourly loop", () => {
     const run = await failing.tick({ maxStarts: 2 });
     expect(run.started).toEqual([]);
     expect(run.findings).toEqual([
-      expect.stringContaining("start one failed: herdr tab create"),
-      expect.stringContaining("start three failed: herdr tab create"),
+      expect.stringContaining("start one failed: hc --json run"),
+      expect.stringContaining("start three failed: hc --json run"),
     ]);
     expect(run.held).toEqual(["1 item(s) waiting: 3 free of 3 lanes, max 2/run"]);
     expect(failing.d.store.item("one")).toMatchObject({ status: "open", attempts: 0, startFailures: 1 });
@@ -219,7 +219,7 @@ describe("hardening", () => {
   test("a lane that opened but whose [START] could not reach the lead counts as started", async () => {
     const { d, add, tick } = setup({
       exec: (inner) => async (cmd, argv) =>
-        cmd === "herdr" && argv[0] === "agent" && argv[2] === "w1:p1"
+        cmd === "hc" && argv[1] === "send" && argv[2] === "t1"
           ? { code: 1, stdout: "", stderr: "lead pane hung" }
           : inner(cmd, argv),
     });
