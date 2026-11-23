@@ -29,7 +29,7 @@ bun run ci
 - `test` — the harness suite.
 - `test:skill` — the skill's script suite.
 
-The unit suites need `bun` and `git`, run offline, and use recorded stand-ins for `herdr` and `gh`. `test/e2e.test.ts` starts a real `herdr` server and is skipped when `herdr` is not on `PATH`.
+The unit suites need `bun` and `git`, run offline, and use recorded stand-ins for `hc`, `herdr-app` and `gh`. `test/e2e-hc.test.ts` starts a real hc core in an isolated session and is skipped when `hc` is not on `PATH`.
 
 ## A pull request
 

@@ -27,7 +27,7 @@ function lockStale(path: string, content: string, now: number): boolean {
   } catch {
     // fall through to the file's mtime
   }
-  // On this host the pid decides: a live holder keeps its lock however long a herdr call takes, or a second flush
+  // On this host the pid decides: a live holder keeps its lock however long an hc call takes, or a second flush
   // would deliver the same batch again. The age rule is only for locks from another host or locks that can't be read.
   if (lock.host === hostname() && typeof lock.pid === "number") return !pidAlive(lock.pid);
   const at =

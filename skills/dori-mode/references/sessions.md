@@ -1,6 +1,6 @@
 # Sessions (lanes)
 
-A lane is one agent session doing one job in its own herdr tab or hc terminal. You launch it, track it in the registry, answer it when it is stuck, and close it when its work is proven done.
+A lane is one agent session doing one job in its own hc terminal. You launch it, track it in the registry, answer it when it is stuck, and close it when its work is proven done.
 
 ## Launching
 
@@ -48,7 +48,7 @@ One JSON file per lane under `<stateDir>/lanes/`, written atomically (temp file 
 | Field | Meaning |
 |---|---|
 | `thread` | where its updates go, as `platform:thread` (or `none`) |
-| `sessionRef` | its session: the runtime (`herdr` or `hc`) and the id; `pane` and `tab` mirror the id and the herdr tab (none on hc). A record from before runtimes existed is read as herdr |
+| `sessionRef` | its session: the runtime (`hc`) and the terminal address; `pane` and `tab` both mirror the address. A record with no `sessionRef` is read from its `pane` |
 | `session` | the agent's own session id, so a closed job can be reopened later |
 | `status` | `working`, `done-claimed`, `verified-done`, `not-done`, `closed` |
 | `claim`, `objection`, `history` | what was claimed, what was objected, every status change |
@@ -69,10 +69,10 @@ When the owner writes in a closed lane's thread, reopen its recorded session in 
 
 Before you type into a pane:
 
-1. check it runs a live agent (`herdr pane process-info --pane <id>` / `hc get <t>`), not a shell, a stopped agent or a startup screen;
-2. read it (`herdr pane read <id> --source recent-unwrapped --lines 40` / `hc read <t> --lines 40`) and confirm the input line is empty and no approval or question prompt is open;
+1. check it runs a live agent (`hc get <t>`), not a shell, a stopped agent or a startup screen;
+2. read it (`hc read <t> --lines 40`) and confirm the input line is empty and no approval or question prompt is open;
 3. send once, as one argument (the scripts' `sendVerified` does this);
-4. confirm delivery from a state change: the agent's status moving to working (herdr's `agent_status`, or the status the agent reports on hc), or the message showing up in the session record. Never press Enter again because of what the screen shows; if no change shows up, treat the send as unconfirmed.
+4. confirm delivery from a state change: the agent's status moving to working (the status the agent reports), or the message showing up in the session record. Never press Enter again because of what the screen shows; if no change shows up, treat the send as unconfirmed.
 
 Exit code 0 and echoed input are not proof the agent got the message. A reply from the session, or its record of handling the message, is.
 

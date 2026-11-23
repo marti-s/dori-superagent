@@ -7,7 +7,7 @@ services:
     image: dori-superagent:local
     container_name: dori
     init: true
-    # panes are hosted by the herdr server inside the container; a TTY is only needed
+    # terminals are hosted by the hc core inside the container; a TTY is only needed
     # by the `docker exec -it` sessions that attach to them
     tty: true
     stdin_open: true

@@ -15,12 +15,12 @@ Dori lives in your Slack, Discord or Telegram. You tell him what to do in a thre
 
 This repository, `dori-superagent`, is Dori under the Sustainable Use License. Dori mode (`skills/dori-mode`) is the bot you talk to: a skill for your coding agent plus a `dori` CLI that opens, tracks and closes the sessions doing the work, and talks to Slack, Discord and Telegram.
 
-The harness (`src/`) is the machine room behind him: one lead session, a duty loop, an hourly loop, as many lanes as the host carries, and a merge gate, in about 4,600 lines of TypeScript on [Bun](https://bun.sh) with no runtime dependencies. It runs on [herdr](https://github.com/herdrdev/herdr), the terminal runtime the sessions live in (or on hc, herdr-core, the headless one from the same project), and [omo](https://github.com/code-yeongyu/oh-my-openagent), the coding agent, which has 70.8k stars on GitHub.
+The harness (`src/`) is the machine room behind him: one lead session, a duty loop, an hourly loop, as many lanes as the host carries, and a merge gate, in about 4,600 lines of TypeScript on [Bun](https://bun.sh) with no runtime dependencies. It runs on hc ([herdr-core](https://releases.herdr.dev/core/install.sh)), the terminal runtime the sessions live in, shown as tabs in the Herdr app, and [omo](https://github.com/code-yeongyu/oh-my-openagent), the coding agent, which has 70.8k stars on GitHub.
 
 ## What you get
 
 - You write in a thread. Dori marks the message with an "eyes" reaction, answers within a minute, and while a job runs its status is one message that he edits in place, with a short progress note every 15 minutes and at each milestone.
-- Every job runs in its own herdr tab, recorded in a registry from launch to close, as many at once as the host carries. A host guard holds new launches when memory, disk or the pane count cross its line.
+- Every job runs in its own terminal, a tab in the Herdr app, recorded in a registry from launch to close, as many at once as the host carries. A host guard holds new launches when memory, disk or the pane count cross its line.
 - No "done" without proof. A lane claims done with evidence, and the claim is checked against live state: the PR is merged, the issue is closed, the version is on npm, the command passes, the URL answers. A claim that doesn't hold goes back as not done within 5 minutes, and a lane with unpushed work can't close.
 - Only the merge gets a ping. The lead is the only session that talks to you, and it reports a code change after the merge, with the PR and the merge commit. Lanes and the duty loop never talk to you.
 - Work goes on while you're away. Briefs wait in a backlog. Once an hour the loop retires finished items, audits the ones nobody closed, starts the next ones that need no decision, and asks you each open question once.
@@ -55,21 +55,21 @@ Both installs put a command named `dori` on your PATH, so install one per machin
 
 ### Dori mode, the bot you talk to
 
-You need herdr, Bun 1.4.5 or newer, git, and the GitHub CLI `gh`.
+You need hc (herdr-core), Bun 1.4.5 or newer, git, and the GitHub CLI `gh`.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superagent/main/install.sh | bash
 ```
 
-That installs [Doriterm](https://doriterm.com) first when the machine has none (its host and herdr-core, through `get.doriterm.com`; a machine with any Doriterm host keeps it, and `DORI_NO_DORITERM=1` skips the step), then clones this repository to `~/.dori/src`, links the skill into `~/.agents/skills/dori-mode`, links `dori` onto your PATH, and copies an example config to `~/.dori/config.json`. Edit at least `leadPane` (your own herdr pane, from `herdr pane current`), `laneWorkspace` and `defaultCwd`.
+That installs [Doriterm](https://doriterm.com) first when the machine has none (its host and herdr-core, through `get.doriterm.com`; a machine with any Doriterm host keeps it, and `DORI_NO_DORITERM=1` skips the step), then clones this repository to `~/.dori/src`, links the skill into `~/.agents/skills/dori-mode`, links `dori` onto your PATH, and copies an example config to `~/.dori/config.json`. Edit at least `leadPane` (your own hc terminal address, from `echo $HC_TERMINAL_ID`), `laneWorkspace` and `defaultCwd`.
 
-Then start your coding agent inside herdr and tell it: Dori mode. It asks what to call it (plain Dori, or ShipDori, WorkDori, so several can run side by side), asks which messenger, finishes the bot's creation and login with you, and greets you through the bot. Before it reads anything of yours it asks for permission tool by tool, and that onboarding is read-only.
+Then start your coding agent inside an hc terminal and tell it: Dori mode. It asks what to call it (plain Dori, or ShipDori, WorkDori, so several can run side by side), asks which messenger, finishes the bot's creation and login with you, and greets you through the bot. Before it reads anything of yours it asks for permission tool by tool, and that onboarding is read-only.
 
 The operating contract is [`skills/dori-mode/SKILL.md`](skills/dori-mode/SKILL.md); setup, sessions, the done protocol and every command are in its [`references/`](skills/dori-mode/references/).
 
 ### The harness
 
-You need Bun 1.4.5 or newer, herdr, omo, and `gh` (for PR head SHAs, checks and the merge).
+You need Bun 1.4.5 or newer, hc (herdr-core), omo, and `gh` (for PR head SHAs, checks and the merge).
 
 ```sh
 git clone https://github.com/sisyphuslabs/dori-superagent
@@ -78,18 +78,18 @@ bun install
 bun link   # puts `dori` on your PATH
 ```
 
-Start herdr, then:
+From a terminal of the Herdr app:
 
 ```sh
 dori up
-# UP runtime=herdr lead=w1:p1 duty=w1:p2 loop=w1:p3 hourly=w1:p4 home=~/.dori
+# UP runtime=hc lead=t1 duty=t2 loop=t3 hourly=t4 home=~/.dori
 ```
 
-That opens a herdr workspace named `dori` with a lead pane (omo with `prompts/lead.md` appended to its system prompt), a duty pane (omo with `prompts/duty.md`), the duty loop below it, and the hourly loop below that. Talk to the lead pane. It writes a brief (goal, inputs, deliverable, stop condition, constraints; see [`examples/brief.md`](examples/brief.md)) and opens lanes itself. You can do the same from a shell:
+That opens four hc terminals: the lead (omo with `prompts/lead.md` appended to its system prompt), duty (omo with `prompts/duty.md`), the duty loop and the hourly loop. They are tabs in the space of the terminal you started from, named `lead`, `duty`, `duty-loop` and `hourly-loop`. Talk to the lead. It writes a brief (goal, inputs, deliverable, stop condition, constraints; see [`examples/brief.md`](examples/brief.md)) and opens lanes itself. You can do the same from a shell:
 
 ```sh
 dori start fix-flaky-login --brief examples/brief.md
-# STARTED fix-flaky-login pane=w1:p5 brief=~/.dori/briefs/fix-flaky-login.md
+# STARTED fix-flaky-login pane=t5 brief=~/.dori/briefs/fix-flaky-login.md
 dori status
 ```
 
@@ -104,10 +104,11 @@ dori ready fix-flaky-login --text 'root cause fixed in owner/repo#12, checks gre
 The lead, on `[READY fix-flaky-login]`:
 
 ```sh
-dori review owner/repo#12            # fresh omo reviewer pinned to the head SHA; writes a receipt; exit 0 on CLEAR
+dori review owner/repo#12            # fresh omo reviewer pinned to the head SHA; writes a receipt and keeps the full review; exit 0 on CLEAR
 dori merge owner/repo#12 --dry-run   # MERGE_OK ... (dry run), or MERGE_REFUSED <why> with exit 2
 dori merge owner/repo#12             # gh pr merge --squash --match-head-commit <sha>
-dori done fix-flaky-login            # closes the lane's pane; only a READY lane can be closed
+dori done fix-flaky-login            # stops the lane's terminal; only a READY lane can be closed
+dori done fix-flaky-login --abandon --note 'wedged, restarted as fix-flaky-login-2'   # closes one that never reported READY
 ```
 
 `bun src/cli.ts` with no arguments prints every command with its flags.
@@ -116,13 +117,13 @@ dori done fix-flaky-login            # closes the lane's pane; only a READY lane
 
 ![architecture](docs/architecture.png)
 
-Three roles, each an omo session in a herdr pane. herdr provides the workspaces, tabs and panes, recognises omo in a pane as an agent, and reports its state (idle, working, blocked, done) over its CLI. dori reads that state before it does anything to a pane.
+Three roles, each an omo session in an hc terminal. hc starts the terminals and reports each agent's state (idle, working, blocked, done, error) as the agent itself announces it; the Herdr app shows the terminals as tabs. dori reads that state before it does anything to a pane.
 
 The lead is the only session that talks to you. It turns a request into a brief, opens a lane with `dori start`, reads what lanes send back, and merges.
 
-A lane is one omo session in its own herdr tab, started with one brief and the lane rules appended to it (`prompts/lane-footer.md`). It reports milestones with `dori report` and finishes with `dori ready`, which does not send without an evidence link.
+A lane is one omo session in its own terminal, started with one brief and the lane rules appended to it (`prompts/lane-footer.md`). It reports milestones with `dori report` and finishes with `dori ready`, which does not send without an evidence link.
 
-The duty loop is `dori duty --interval 60`, a plain process in a pane next to a duty omo session. Each tick it flushes queued messages into panes that have gone idle, nudges lanes that have been silent, escalates to the lead, and marks a lane whose pane vanished as lost. `dori duty stop --text 'why'` is its kill switch; until `dori duty resume`, every tick only prints why it is stopped.
+The duty loop is `dori duty --interval 60`, a plain process in a pane next to a duty omo session. Each tick it flushes queued messages into panes that have gone idle, nudges lanes that have been silent, escalates to the lead, marks a lane whose terminal finished or vanished as lost, and cleans up the terminal and tab of a lane that was closed 15 minutes ago. `dori duty stop --text 'why'` is its kill switch; until `dori duty resume`, every tick only prints why it is stopped.
 
 The hourly loop is `dori loop`, started by `dori up` in a fourth pane. Work waits in a backlog under `~/.dori/backlog/`, one brief per item, added by the lead or imported from GitHub issues that carry a label:
 
@@ -142,11 +143,13 @@ The loop only opens lanes and sends messages; it never merges, pushes or closes 
 
 State is JSON on disk under `~/.dori` (or `$DORI_HOME`): `lanes/`, `inbox/`, `briefs/`, `receipts/`, plus `backlog/` and `loop/` for the hourly loop and `duty/` for the duty loop's stop file. Besides the agent sessions, the only long-running processes the harness adds are the two loops, and the only runtime dependency is Bun.
 
-### Two session runtimes
+### The session runtime
 
-Sessions run on herdr or on hc ([herdr-core](https://releases.herdr.dev/core/install.sh)), and one home can hold sessions on both. The harness talks to them through one interface in `src/runtime/`, and every stored lane and role remembers which runtime opened it, so commands on it go there whatever runtime is selected. New sessions open on the runtime named by `DORI_RUNTIME`, else by `"runtime": "herdr"` or `"runtime": "hc"` in `$DORI_HOME/config.json`; with neither set, Dori picks hc inside an hc terminal, herdr inside a herdr pane, and otherwise hc when it is installed, else herdr. hc is the default runtime; neither binary on PATH is refused with a one-line fix. `dori status` prints the choice first, as `RUNTIME hc (from config)`.
+Sessions run on hc ([herdr-core](https://releases.herdr.dev/core/install.sh)), and the harness talks to it through one interface in `src/runtime/`. `DORI_RUNTIME` and the `runtime` key in `$DORI_HOME/config.json` accept only `hc`. `dori status` prints where the choice came from first, as `RUNTIME hc (from config)`, and with no `hc` on PATH and nothing set, `dori` refuses with a one-line fix.
 
-On hc there are no workspaces or tabs: Dori opens one labelled terminal per session, and a session's status comes only from the agent's own report (an OSC 7501 sequence, which recent omo builds send); an agent that never reports stays `unknown` and its messages wait in the inbox. `dori migrate --to hc --all` (or `--lane <key>`, `--role duty-loop`, with `--dry-run` to see the plan) moves sessions to the other runtime: it captures a handoff brief, opens the replacement, moves the inbox and closes the old session, printing `MIGRATED`, `SKIP`, `DEFERRED` or `MIGRATE_ROLLBACK` per session. The verb-by-verb mapping is in [`docs/runtime.md`](docs/runtime.md).
+Dori opens one labelled terminal per session. A session's status comes only from the agent's own report (an OSC 7501 sequence, which recent omo builds send); an agent that never reports stays `unknown` and its messages wait in the inbox. hc's server does not inherit the caller's environment, so each new terminal is started with the caller's `DORI_*` settings and `PATH`.
+
+Every terminal Dori opens joins one space of the Herdr app: the one `DORI_HERDR_SPACE` names (a `herdr.space` id, refused when no terminal is in that space), else the space of the terminal `dori` is started from. Its tab is then named through `herdr-app`: `lead`, `duty`, `duty-loop`, `hourly-loop`, or the lane key. The window lists a new terminal a moment after hc starts it, so the tab is looked up again, up to 10 times 200 ms apart, and a tab that cannot be named never fails the launch. `DORI_HERDR_APP` is the path of `herdr-app` when it is not on PATH. Started outside the Herdr app with no `DORI_HERDR_SPACE`, a terminal gets no placement. The details are in [`docs/runtime.md`](docs/runtime.md).
 
 ## What the harness enforces
 
@@ -156,25 +159,44 @@ The lead is the only session that talks to you (`prompts/lead.md`). The lane rul
 
 ### READY needs evidence
 
-`dori ready` refuses without at least one `--evidence` link and without final answer text. Both are stored on the lane record, and `dori done` refuses any lane that is not `ready`, so no lane closes without a recorded answer.
+`dori ready` refuses without at least one `--evidence` link and without final answer text. Both are stored on the lane record, and `dori done` refuses any lane that is not `ready`, so no lane closes without a recorded answer. The one way around is the lead's `dori done <key> --abandon --note 'why'`, for a lane that will never report READY: the note is kept in the lane's log instead.
 
 ### Busy panes are never interrupted, and nothing is sent twice
 
-`dori send` asks herdr for the pane's agent state first. `idle` or `done` get the message now; anything else has it queued in `~/.dori/inbox/`, and the duty loop delivers the queue when the pane goes idle, as one batch. A pane with a shell in front is never typed into, because typed text would run as a command.
+`dori send` asks hc for the pane's agent state first. `idle` or `done` get the message now; anything else has it queued in `~/.dori/inbox/`, and the duty loop delivers the queue when the pane goes idle, as one batch. A pane with a shell in front is never typed into, because typed text would run as a command.
 
-When a delivery failed after the text may already have reached the pane, only Enter is pressed later, and only into the agent it was typed into; if herdr then sees a different agent, the entry is held, the lead is told once with `[DELIVERY-AMBIGUOUS <pane>]`, and `dori inbox ack` or `dori inbox resend` settles it by hand.
+hc pastes a message and presses Enter in one step, and refuses that step when the agent's state changed in between. When the step failed without saying whether the text arrived, the entry is held and never sent again by itself: the lead is told once with `[DELIVERY-AMBIGUOUS <pane>]`, and `dori inbox ack` or `dori inbox resend` settles it by hand.
 
 ### Nudges at 10, 20 and 40 minutes
 
 A lane that has not reported for 10 minutes, and whose pane is not working, gets `prompts/nudge.md` in its pane, again at 20, and at 40 the duty loop sends the lead `[ESCALATE <key>]`. A lane that reported `--status waiting`, or whose pane is `blocked`, is left alone.
 
+### A lane whose terminal ends is lost, and closed lanes are cleaned up
+
+A lane whose hc terminal finishes or disappears before READY is marked `lost`, and the lead gets `[LOST <key>]`. `dori start` under that key records the loss first when the duty loop has not seen it yet, and then starts the lane afresh.
+
+`DORI_TAB_CLOSE_MIN` minutes (default 15, `0` for never) after a lane is done or lost, the duty loop removes its terminal and closes its tab in the Herdr app. Until then `dori done` only stops the terminal, so its last screen can still be read. The duty loop touches only the terminal Dori started for that lane, never the lead's, duty's or a loop's, and keeps a tab that still holds another live terminal. A lane that is idle, waiting or READY is never cleaned up.
+
 ### Merge needs a CLEAR receipt at the exact head and green checks
 
-`dori merge` reads the PR's head SHA with `gh`, then requires a receipt for that SHA in `~/.dori/receipts/` with verdict `CLEAR`. Only `dori review` writes receipts: it runs a fresh non-interactive omo on `prompts/review.md` pinned to that SHA, and when the reviewer prints no `VERDICT:` line, no receipt is written.
+`dori merge` reads the PR's head SHA with `gh`, then requires a receipt for that SHA in `~/.dori/receipts/` with verdict `CLEAR`. Only `dori review` writes receipts: it runs a fresh non-interactive omo on `prompts/review.md` pinned to that SHA. A run that prints no `VERDICT:` line is run once more, and after two such runs the review fails with no receipt. A run that takes longer than `DORI_REVIEW_TIMEOUT_MIN` minutes (default 25) is killed with its children and fails the review, unless it had already printed its verdict.
+
+The reviewer's whole output is kept beside the receipt as `receipts/<pr>@<sha>.md`, also when the review fails; the receipt's `review` field is that path and its `summary` holds the start and the end of the review. Each run also leaves its stdout, stderr, result and session file in its own directory under `receipts/<pr>@<sha>.attempts/`.
 
 For the built-in reviewer, `DORI_AGENT_CMD` accepts an executable followed by fixed arguments, with single quotes, double quotes and backslash escapes. A value that resolves as one executable is used as-is, including an unquoted path containing spaces. Otherwise, quote paths or arguments containing spaces, for example `DORI_AGENT_CMD='"/opt/lane tools/reviewer-omo" --account "review lane"'`. Review flags, including an explicit `--model`, follow those fixed arguments. The executable launches directly: variables, substitutions, globs and shell operators remain literal; use an executable wrapper for shell setup. Empty commands and malformed quoting are refused. `hooks.reviewCommand` retains precedence and uses its own argv template.
 
 Then `gh pr checks` must return at least one check, every check must be `pass` or `skipping`, and at least one must be `pass`. An empty check list is refused with "an empty check list is never green". A push after the review changes the head SHA, so the receipt no longer matches and `dori review` has to run again.
+
+Set `LANDING_BACKEND` to hand the PR to a landing queue instead of merging it:
+
+```sh
+export LANDING_BACKEND='["/absolute/path/to/landing-backend","submit"]'
+dori merge owner/repo#123
+```
+
+The value is a JSON array, an executable and its literal arguments, parsed once at startup and never run through a shell. Dori re-reads the head, refuses one that moved, and calls the backend with `--repo owner/repo --pr 123 --expected-head FULL_SHA` appended. The backend must exit 0 and print one JSON object that repeats `repo`, `pr` and `expectedHead`. `"status":"queued"` prints `QUEUED owner/repo#123 head=FULL_SHA` and is admission only. `"status":"landed"` must carry a `landedHead` and a `landedTree` of 40 hexadecimal characters and a nonblank `receipt` naming the queue's own evidence, and prints `MERGED` with them. Any other answer is refused, with no fallback to a direct merge. `--dry-run` checks admission and never calls the backend.
+
+`formaengine/forma-rs` lands only through its own queue: it needs `LANDING_BACKEND`, has no dry run, and its GitHub checks are not consulted, because the queue verifies the landing itself. When that backend runs Python, or when `FORMA_QUEUE_BOOTSTRAP` (a JSON object with `repo`, `pr`, `head` and `tree`) names the one PR head allowed to run from its own checkout, Dori checks the source before anything runs. The backend must be exactly `["python3", "/absolute/source/.agents/workflows/landing-verifier.py"]`, in a clean checkout of that repository at the pinned head and tree, or at freshly fetched `origin/main` when unpinned, with no symlink, bytecode or untracked importable file under `.agents/workflows` or `specs`. It then runs as `python3 -I -S -B <script>`.
 
 ### Hooks for your own tooling
 
@@ -227,7 +249,7 @@ DeepSeek published [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh
 |---|---|
 | Source: GitHub, Feishu | Dori lives in chat: Slack, Discord, Telegram |
 | Trigger, then Eval, then Ticket | One task asked in chat becomes one lane with one brief |
-| Executor session per ticket: one session, one work directory | One coding-agent session per task, in its own herdr tab, many in parallel |
+| Executor session per ticket: one session, one work directory | One coding-agent session per task, in its own terminal, many in parallel |
 | Channel: answers in the original conversation, with a PR for example | Reports in the same thread, one status message per task, edited in place |
 | Panel: shows only what needs a person | The lead asks you only for decisions that are irreversible or change the product |
 | Least human attention, most value | Short messages, no emojis, a ping only after the merge |
@@ -242,7 +264,7 @@ We have been running this shape for about six months, in public:
 - 2026-10-07: this repository publishes Dori mode, as `omo-dori-mode-experimental` ([ce53e4d](https://github.com/sisyphuslabs/dori-superagent/commit/ce53e4d)).
 - 2026-10-31: DeepSeek's prototype gets its first commit.
 
-It is how omo itself is built. Between 2026-07-13 and 2026-11-08, [code-yeongyu/oh-my-openagent](https://github.com/code-yeongyu/oh-my-openagent) merged 2,846 pull requests and landed 18,780 commits, counting every contributor, produced with the full version of this setup. The harness in this repository is the minimal version: the part that runs on herdr and omo alone.
+It is how omo itself is built. Between 2026-07-13 and 2026-11-08, [code-yeongyu/oh-my-openagent](https://github.com/code-yeongyu/oh-my-openagent) merged 2,846 pull requests and landed 18,780 commits, counting every contributor, produced with the full version of this setup. The harness in this repository is the minimal version: the part that runs on hc and omo alone.
 
 ## Configuration
 
@@ -252,8 +274,13 @@ Harness environment:
 |---|---|---|
 | `DORI_HOME` | `~/.dori` | state directory |
 | `DORI_AGENT_CMD` | `omo` | the agent each pane runs |
-| `DORI_HERDR_SESSION` | | a named herdr session |
-| `DORI_RUNTIME` | the runtime you are inside, else `hc` when it is on PATH, else `herdr` | which runtime new sessions open on: `herdr`, or `hc` (herdr-core, the headless session runtime from the same project); the `runtime` key in `$DORI_HOME/config.json` does the same, and with neither binary on PATH, nothing set and no pane or terminal of either around you, `dori` refuses with a one-line fix |
+| `DORI_RUNTIME` | `hc` | the session runtime; only `hc` (herdr-core) is accepted, here and in the `runtime` key of `$DORI_HOME/config.json`, and with no `hc` on PATH and nothing set, `dori` refuses with a one-line fix |
+| `DORI_HERDR_SPACE` | the space of the terminal `dori` is started from | the `herdr.space` id of the Herdr app space every Dori terminal joins |
+| `DORI_HERDR_APP` | `herdr-app` on PATH | the `herdr-app` binary that names and closes tabs |
+| `DORI_REVIEW_TIMEOUT_MIN` | 25 | minutes one reviewer run may take |
+| `DORI_TAB_CLOSE_MIN` | 15 | minutes after a lane is done or lost before its terminal and tab are cleaned up; `0` never does |
+| `LANDING_BACKEND` | | the landing queue `dori merge` hands a PR to, as a JSON argv array |
+| `FORMA_QUEUE_BOOTSTRAP` | | `{repo, pr, head, tree}` of the one PR head allowed to run as the `formaengine/forma-rs` landing backend |
 | `DORI_CMD` | full path to `src/cli.ts` | how the agents are told to call dori |
 | `DORI_PROMPTS_DIR` | the repo's `prompts/` | your own prompt files |
 | `DORI_MAX_LANES`, `DORI_MAX_STARTS`, `DORI_MAX_LOAD` | 3, 2, core count | hourly loop budget |
@@ -263,7 +290,7 @@ Dori mode reads `~/.dori/config.json` (or `DORI_CONFIG`); every field is optiona
 
 ## Run it in a container
 
-[`examples/container/`](examples/container/) holds a Dockerfile, a compose file and an entrypoint for one long-lived container with gh, node, bun, herdr, agent-messenger, omo and the harness: every downloaded binary is checked against a pinned sha256, and the npm packages and the harness are pinned by version and commit. No image is published. You build it, do the logins once inside the running container, and named volumes keep them. [`docs/container.md`](docs/container.md) has the build, the first run and how to attach.
+[`examples/container/`](examples/container/) holds a Dockerfile, a compose file and an entrypoint for one long-lived container with gh, node, bun, hc, agent-messenger, omo and the harness: every downloaded binary is checked against a pinned sha256, and the npm packages and the harness are pinned by version and commit. No image is published. You build it, do the logins once inside the running container, and named volumes keep them. [`docs/container.md`](docs/container.md) has the build, the first run and how to attach.
 
 ## Telemetry
 
@@ -289,11 +316,11 @@ cd skills/dori-mode/scripts && bun install && bun test   # Dori mode: 321 tests 
 bun run ci                                        # biome, tsc, knip, the 250-line check, both suites
 ```
 
-The harness tests run against a fake herdr, a fake hc and a fake gh with a clock the tests move; the end-to-end tests start a real herdr server or a real hc core in an isolated session with a fake agent script in place of omo, and each skips itself when its binary is not on PATH. Dori mode's tests run against fake herdr, git and gh and touch nothing real. CI runs the same on Ubuntu and macOS.
+The harness tests run against a fake hc and a fake gh with a clock the tests move; the end-to-end test starts a real hc core in an isolated session with a fake agent script in place of omo, and skips itself when `hc` is not on PATH. Dori mode's tests run against fake hc, git and gh and touch nothing real. CI runs the same on Ubuntu and macOS.
 
 ## What this is not
 
-The harness is the minimal version and not our production stack. Left out on purpose: the cross-machine mesh, heavy-slot scheduling, the chat and ticket-tracker bridges, and receipts for whole test suites. The part that runs on herdr and omo alone is here: roles, lanes, the inbox, the duty loop, the hourly loop and backlog, and the review and merge gate. Dori mode is a separate CLI with its own messenger pieces, host guard and heavy-slot runner; the harness imports nothing from it.
+The harness is the minimal version and not our production stack. Left out on purpose: the cross-machine mesh, heavy-slot scheduling, the chat and ticket-tracker bridges, and receipts for whole test suites. The part that runs on hc and omo alone is here: roles, lanes, the inbox, the duty loop, the hourly loop and backlog, and the review and merge gate. Dori mode is a separate CLI with its own messenger pieces, host guard and heavy-slot runner; the harness imports nothing from it.
 
 ## Contributing
 

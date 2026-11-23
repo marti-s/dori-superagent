@@ -2,19 +2,9 @@
 
 Run these once, in order. Stop and ask the owner wherever a step needs their choice or their hand.
 
-## 1. herdr or hc
+## 1. hc
 
-The Dori runs its sessions on one of two runtimes. herdr is a terminal multiplexer: every lane is a herdr tab, and herdr lets you read a pane, type into it and see which process runs there. hc (herdr-core) keeps each lane in its own terminal, labelled with the lane key, and learns the agent's status only from the agent's own OSC 7501 report (recent omo builds send it).
-
-herdr:
-
-```sh
-curl -fsSL https://herdr.dev/install.sh | sh
-herdr integration install pi        # or the integration for the agent you run in
-herdr --skill                       # load its skill unless it is already in your context
-```
-
-hc:
+The Dori runs its sessions on hc (herdr-core). hc keeps each lane in its own terminal, labelled with the lane key, and learns the agent's status only from the agent's own OSC 7501 report (recent omo builds send it). The Herdr app shows each terminal as a tab; the Dori names a lane's tab after its key through `herdr-app`.
 
 ```sh
 curl -fsSL https://releases.herdr.dev/core/install.sh | sh
@@ -22,7 +12,7 @@ mkdir -p ~/.config/herdr-core && echo 'notes = false' >> ~/.config/herdr-core/co
 hc --skill                          # load its skill unless it is already in your context
 ```
 
-`notes = false` stops hc from typing notes into a parent agent on its own, so the Dori's own sends are the only text that reaches a lane. With both installed, the Dori runs on hc unless `"runtime": "herdr"` is set in step 4; with only one on PATH, it uses that one.
+`notes = false` stops hc from typing notes into a parent agent on its own, so the Dori's own sends are the only text that reaches a lane. Lanes open in the Herdr app space of the terminal the Dori runs in; set `DORI_HERDR_SPACE` to a `herdr.space` id to put them in another one.
 
 ## 2. Messenger
 
@@ -67,7 +57,7 @@ cd skills/dori-mode/scripts && bun install && bun link    # puts `dori` on PATH
 mkdir -p ~/.dori && cp ../references/config.example.json ~/.dori/config.json
 ```
 
-Then edit `~/.dori/config.json`: at least `runtime` (`"herdr"` or `"hc"`), `leadPane` (your own session: `herdr pane current` on herdr, `echo $HC_TERMINAL_ID` on hc), `laneWorkspace` (a herdr workspace; on hc, the `dori.group` label the lane terminals get), `defaultCwd`, and the two hooks if you want lane threads updated automatically. `references/scripts.md` explains every field.
+Then edit `~/.dori/config.json`: at least `leadPane` (your own terminal's address, from `echo $HC_TERMINAL_ID`), `laneWorkspace` (the `dori.group` label the lane terminals get), `defaultCwd`, and the two hooks if you want lane threads updated automatically. `references/scripts.md` explains every field.
 
 ## 5. Monitors
 
