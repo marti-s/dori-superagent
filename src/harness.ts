@@ -3,6 +3,8 @@ import { cpus, loadavg } from "node:os";
 import { join, resolve } from "node:path";
 import { shq } from "./delivery.ts";
 import { memFreePct } from "./host.ts";
+import { landingBackendArgv } from "./landing.ts";
+import { type FormaQueueBootstrap, parseFormaQueueBootstrap } from "./native-bootstrap.ts";
 import { Refusal } from "./refusal.ts";
 import { type Exec, spawnExec } from "./runtime/exec.ts";
 import { HcRuntime } from "./runtime/hc/index.ts";
@@ -24,6 +26,10 @@ export type Deps = {
   /** Which runtime new sessions open on, and why (`dori status` prints it). Throws when none can be chosen. */
   readonly choice: () => RuntimeChoice;
   readonly exec: Exec;
+  /** The landing queue backend `dori merge` hands a PR to: an executable and its literal arguments. */
+  readonly landingBackend?: readonly string[];
+  /** The one PR head whose own checkout may run as the native queue's backend (the first bridge landing). */
+  readonly formaQueueBootstrap?: FormaQueueBootstrap;
   readonly now: () => number;
   readonly agentCmd: string;
   /** How long one reviewer run may take before it is killed and the review fails. */
@@ -37,6 +43,9 @@ export type Deps = {
 
 /** The runtime is chosen on first use, so commands that open or reach no session work without one installed. */
 export const defaultDeps = (): Deps => {
+  // Parsed once, before anything else: a bad setting stops the command, and a later change of the env changes nothing.
+  const landingBackend = landingBackendArgv(process.env["LANDING_BACKEND"]);
+  const formaQueueBootstrap = parseFormaQueueBootstrap(process.env["FORMA_QUEUE_BOOTSTRAP"]);
   const store = new Store();
   let chosen: RuntimeChoice | undefined;
   let runtimes: Runtimes | undefined;
@@ -54,6 +63,8 @@ export const defaultDeps = (): Deps => {
     },
     choice,
     exec: spawnExec,
+    ...(landingBackend === undefined ? {} : { landingBackend }),
+    ...(formaQueueBootstrap === undefined ? {} : { formaQueueBootstrap }),
     now: Date.now,
     agentCmd: process.env["DORI_AGENT_CMD"] ?? "omo",
     reviewTimeoutMs: reviewTimeoutMinutes(process.env["DORI_REVIEW_TIMEOUT_MIN"]) * 60_000,

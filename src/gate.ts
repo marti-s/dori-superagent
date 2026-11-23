@@ -3,6 +3,7 @@ import { agentCommandArgv } from "./agent-command.ts";
 import { prompt, type Deps } from "./harness.ts";
 import { Refusal } from "./refusal.ts";
 import { loadHooks, substitute } from "./hooks.ts";
+import { isNativeQueue, land } from "./landing.ts";
 import { createReviewAttempt, saveReviewAttempt, saveReviewOutput } from "./receipts.ts";
 import type { MergeOutcome } from "./telemetry.ts";
 
@@ -100,7 +101,11 @@ export async function review(
 
 type Check = { name: string; bucket: string };
 
-/** Merge only when the exact current head has a CLEAR review receipt and every check passed. An empty check list is never green. */
+/**
+ * Merge only when the exact current head has a CLEAR review receipt. With a landing backend the PR is handed to it;
+ * without one it is squash-merged. Every repository but the native queue's also needs green checks, and an empty check
+ * list is never green; the native queue verifies the landing itself, so it always needs its backend and has no dry run.
+ */
 export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean } = {}): Promise<string> {
   const pr = parsePr(prId);
   const sha = await headSha(d, pr);
@@ -109,7 +114,18 @@ export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean 
     if (!opts.dryRun) d.usage.record({ name: "dori.merge_decided", outcome: refused[0] });
     throw new Refusal(`MERGE_REFUSED ${refused[1]}`);
   }
+  if (isNativeQueue(pr)) {
+    if (!d.landingBackend) throw new Refusal("MERGE_REFUSED native landing requires an explicit trusted queue backend");
+    if (opts.dryRun)
+      throw new Refusal("MERGE_REFUSED native dry-run is unavailable: landing verification requires the native queue");
+  }
   if (opts.dryRun) return `MERGE_OK ${pr.id} head=${sha} (dry run)`;
+  if (d.landingBackend) {
+    if ((await headSha(d, pr)) !== sha) throw new Refusal("MERGE_REFUSED head moved during landing admission");
+    const { line, landed } = await land(d, d.landingBackend, pr, sha);
+    if (landed) d.usage.record({ name: "dori.merge_decided", outcome: "merged" });
+    return line;
+  }
   await gh(d, ["pr", "merge", String(pr.number), "--repo", pr.repo, "--squash", "--match-head-commit", sha]);
   d.usage.record({ name: "dori.merge_decided", outcome: "merged" });
   return `MERGED ${pr.id} head=${sha}`;
@@ -119,6 +135,7 @@ async function gateRefusal(d: Deps, pr: PrRef, sha: string): Promise<[MergeOutco
   const receipt = d.store.receipt(pr.id, sha);
   if (!receipt) return ["no_receipt", `no review receipt at head ${sha.slice(0, 12)} (run: dori review ${pr.id})`];
   if (receipt.verdict !== "CLEAR") return ["review_block", `review at ${sha.slice(0, 12)} is ${receipt.verdict}`];
+  if (isNativeQueue(pr)) return undefined;
   const checksRes = await d.exec("gh", ["pr", "checks", String(pr.number), "--repo", pr.repo, "--json", "name,bucket"]);
   const checks: Check[] = checksRes.stdout.trim().startsWith("[") ? JSON.parse(checksRes.stdout) : [];
   if (checks.length === 0) return ["no_checks", "no checks reported: an empty check list is never green"];
