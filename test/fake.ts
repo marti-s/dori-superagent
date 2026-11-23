@@ -153,6 +153,7 @@ export class World {
       if (killed) return { code: 143, stdout: "", stderr: "terminated" };
     }
     if (cmd === "gh") return { ...this.gh(argv), stderr: "" };
+    if (cmd === "herdr-app") return this.hc.exec(cmd, argv);
     if (cmd !== "hc") return { stderr: "", ...this.reviewer(argv) };
     return this.hcExec(argv);
   };

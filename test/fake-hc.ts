@@ -1,4 +1,5 @@
-// A recorder standing in for the `hc` binary: argv in, the JSON `hc --json` prints out, over a terminals map.
+// A recorder standing in for the `hc` binary: argv in, the JSON `hc --json` prints out, over a terminals map. It
+// also stands in for `herdr-app`, the Herdr window: every terminal hc starts gets its own tab there.
 import type { Exec, ExecResult } from "../src/runtime/exec.ts";
 
 export type FakeStatus = { state: string; app?: string } | null;
@@ -34,6 +35,8 @@ export type FakeKnobs = {
   getError?: string;
   /** `read` answers this error kind for every terminal. */
   readError?: string;
+  /** The Herdr window: `missing` = no herdr-app binary, `fail` = every call exits 1, `late` = the next `ls` lists no tab yet, `blind` = no `ls` ever lists one. */
+  app?: "missing" | "fail" | "late" | "blind";
 };
 
 const EXIT: Readonly<Record<string, number>> = {
@@ -77,6 +80,11 @@ export class FakeHc {
   readonly calls: string[][] = [];
   readonly sent: { id: string; text: string }[] = [];
   readonly terminals = new Map<string, FakeTerminal>();
+  /** The Herdr window's tabs by the terminal each holds, and every herdr-app call made. */
+  readonly tabs = new Map<string, { id: string; name: string }>();
+  readonly appCalls: string[][] = [];
+  /** The binary every herdr-app call was made with. */
+  readonly appBins = new Set<string>();
   knobs: FakeKnobs = {};
   private next = 1;
 
@@ -86,6 +94,10 @@ export class FakeHc {
   }
 
   readonly exec: Exec = async (cmd, argv) => {
+    if (cmd.endsWith("herdr-app")) {
+      this.appBins.add(cmd);
+      return this.appExec(argv);
+    }
     if (cmd !== "hc" || argv[0] !== "--json") throw new Error(`unexpected call ${cmd} ${argv.join(" ")}`);
     const args = argv.slice(1);
     this.calls.push(args);
@@ -117,6 +129,25 @@ export class FakeHc {
     }
   };
 
+  private appExec(argv: readonly string[]): ExecResult {
+    this.appCalls.push([...argv]);
+    if (this.knobs.app === "missing") throw new Error("ENOENT: herdr-app");
+    if (this.knobs.app === "fail") return { code: 1, stdout: "", stderr: "window closed\n" };
+    const [verb, action, , id, , name] = argv;
+    if (verb === "ls") {
+      const shown = this.knobs.app === undefined ? [...this.tabs] : [];
+      if (this.knobs.app === "late") delete this.knobs.app;
+      const tabs = shown.map(([terminal, tab]) => ({ ...tab, terminals: [{ terminal, pane: `p-${terminal}` }] }));
+      return ok({ spaces: [{ id: "sp", name: "work", tabs }] });
+    }
+    const held = [...this.tabs].find(([, tab]) => tab.id === id);
+    if (verb !== "do" || held === undefined) return { code: 1, stdout: "", stderr: "no such tab\n" };
+    if (action === "tab.rename") held[1].name = name ?? "";
+    else if (action === "tab.close") this.tabs.delete(held[0]);
+    else return { code: 1, stdout: "", stderr: `unknown action ${action}\n` };
+    return ok({});
+  }
+
   private run(args: string[]): ExecResult {
     if (this.knobs.nameTaken && args.includes("--name")) {
       this.knobs.nameTaken = false;
@@ -135,6 +166,7 @@ export class FakeHc {
       id,
       terminal({ labels, status: null, reported: false, turn: 0, ...(name === undefined ? {} : { name }) }),
     );
+    this.tabs.set(id, { id: `tb-${id}`, name: String(this.tabs.size + 1) });
     return ok({ address: id, state: "live", labels });
   }
 
@@ -153,6 +185,7 @@ export class FakeHc {
         turn: t.turn,
         ...(t.name === undefined ? {} : { name: t.name }),
         ...(t.status === null ? {} : { status: t.status.state }),
+        ...(t.labels["where"] === undefined ? {} : { where: t.labels["where"] }),
       }));
     return ok({ hidden_finished: 0, machines: [], terminals: rows });
   }

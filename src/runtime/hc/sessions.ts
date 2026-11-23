@@ -2,6 +2,7 @@ import type { Exec } from "../exec.ts";
 import type { CreateSpec, SessionInfo, SessionRef } from "../types.ts";
 import { hcCall, isKind } from "./exec.ts";
 import { statusWord } from "./probe.ts";
+import type { Space } from "./space.ts";
 
 const NAME_MAX = 32;
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -40,8 +41,14 @@ async function liveNames(exec: Exec): Promise<Set<string>> {
   return names;
 }
 
-/** The `hc run` argv for a spec: labels for grouping, the env through the `env` utility (one argv element per K=V). */
-export function createArgv(spec: CreateSpec, shell: string, name: string | undefined): string[] {
+/** The name of the Herdr tab a session is shown in: the lane key, or the role of the four `dori up` sessions. */
+export const tabName = (spec: CreateSpec): string => (spec.role === "lane" ? spec.name : spec.role);
+
+/**
+ * The `hc run` argv for a spec: labels for grouping, the env through the `env` utility (one argv element per K=V).
+ * `space` places the terminal in that Herdr app space (`herdr.space`, and `where` as "<space> / dori-<tab>").
+ */
+export function createArgv(spec: CreateSpec, shell: string, name: string | undefined, space?: Space): string[] {
   for (const key of Object.keys(spec.env))
     if (!ENV_KEY.test(key)) throw new Error(`env key ${JSON.stringify(key)} is not a shell variable name`);
   const labels = [
@@ -49,6 +56,7 @@ export function createArgv(spec: CreateSpec, shell: string, name: string | undef
     `dori.role=${spec.role}`,
     `dori.name=${spec.name}`,
     ...(spec.role === "lane" ? [`dori.lane=${spec.name}`] : []),
+    ...(space === undefined ? [] : [`herdr.space=${space.id}`, `where=${space.name} / dori-${tabName(spec)}`]),
   ];
   return [
     "run",
@@ -71,15 +79,15 @@ export function createArgv(spec: CreateSpec, shell: string, name: string | undef
  * path). The slug name is used only when no live terminal holds it; a name taken in between is retried without one.
  * Identity is the address plus labels, never the name.
  */
-export async function create(exec: Exec, spec: CreateSpec, shell: string): Promise<SessionRef> {
+export async function create(exec: Exec, spec: CreateSpec, shell: string, space?: Space): Promise<SessionRef> {
   const slug = slugName(spec.name);
   const name = slug !== undefined && !(await liveNames(exec)).has(slug) ? slug : undefined;
   let result: Record<string, unknown>;
   try {
-    result = await hcCall(exec, createArgv(spec, shell, name));
+    result = await hcCall(exec, createArgv(spec, shell, name, space));
   } catch (e) {
     if (name === undefined || !isKind(e, "name_taken")) throw e;
-    result = await hcCall(exec, createArgv(spec, shell, undefined));
+    result = await hcCall(exec, createArgv(spec, shell, undefined, space));
   }
   const id = str(result["address"]);
   if (id === undefined) throw new Error("hc run did not return an address");
