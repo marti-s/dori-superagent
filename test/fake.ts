@@ -197,6 +197,7 @@ export class World {
       exec: this.exec,
       now: () => this.clock,
       agentCmd: "omo",
+      reviewTimeoutMs: 25 * 60_000,
       doriCmd: "dori",
       host: () => this.host,
       usage: this.recorder,

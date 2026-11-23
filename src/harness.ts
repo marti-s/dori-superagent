@@ -3,6 +3,7 @@ import { cpus, loadavg } from "node:os";
 import { join, resolve } from "node:path";
 import { shq } from "./delivery.ts";
 import { memFreePct } from "./host.ts";
+import { Refusal } from "./refusal.ts";
 import { type Exec, spawnExec } from "./runtime/exec.ts";
 import { HcRuntime } from "./runtime/hc/index.ts";
 import { Runtimes } from "./runtime/registry.ts";
@@ -25,6 +26,8 @@ export type Deps = {
   readonly exec: Exec;
   readonly now: () => number;
   readonly agentCmd: string;
+  /** How long one reviewer run may take before it is killed and the review fails. */
+  readonly reviewTimeoutMs: number;
   readonly doriCmd: string;
   readonly host: () => HostLoad;
   readonly usage: Usage;
@@ -51,11 +54,23 @@ export const defaultDeps = (): Deps => {
     exec: spawnExec,
     now: Date.now,
     agentCmd: process.env["DORI_AGENT_CMD"] ?? "omo",
+    reviewTimeoutMs: reviewTimeoutMinutes(process.env["DORI_REVIEW_TIMEOUT_MIN"]) * 60_000,
     doriCmd: process.env["DORI_CMD"] ?? `DORI_HOME=${shq(store.root)} bun ${shq(CLI)}`,
     host: () => ({ load1: loadavg()[0] ?? 0, cores: cpus().length, memFreePct: memFreePct() }),
     usage: new Telemetry(store.root),
   };
 };
+
+const REVIEW_TIMEOUT_MIN = 25;
+
+/** DORI_REVIEW_TIMEOUT_MIN as a positive number of minutes; unset means 25, anything else is refused. */
+export function reviewTimeoutMinutes(raw: string | undefined): number {
+  if (raw === undefined || raw === "") return REVIEW_TIMEOUT_MIN;
+  const minutes = Number(raw);
+  if (!Number.isFinite(minutes) || minutes <= 0)
+    throw new Refusal(`DORI_REVIEW_TIMEOUT_MIN must be a positive number of minutes, not ${JSON.stringify(raw)}`);
+  return minutes;
+}
 
 /** `DORI_PROMPTS_DIR` when set, else the repo's `prompts/`. */
 export const promptsDir = (): string => process.env["DORI_PROMPTS_DIR"] || PROMPTS;

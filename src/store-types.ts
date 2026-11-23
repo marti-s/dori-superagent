@@ -48,7 +48,10 @@ export type ReviewReceipt = {
   verdict: "CLEAR" | "BLOCK";
   model: string;
   at: number;
+  /** The start and the end of the review, at most 4000 characters; the whole review is in `review`. */
   summary: string;
+  /** Path of the file holding the reviewer's full output. */
+  review: string;
 };
 
 export type ItemStatus = "open" | "running" | "done" | "dropped";

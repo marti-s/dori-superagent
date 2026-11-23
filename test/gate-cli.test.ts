@@ -65,9 +65,11 @@ const fixed = ${JSON.stringify(fixed)};
 if (JSON.stringify(argv.splice(0, fixed.length)) !== JSON.stringify(fixed)) {
   console.error("fixture received corrupted fixed arguments"); process.exit(92);
 }
-const expected = ["-p", "--no-session", ...${JSON.stringify(scenario.commandLine ? ["--model", model] : [])}];
-if (JSON.stringify(argv.slice(0, -1)) !== JSON.stringify(expected) || !argv.at(-1)?.includes(${JSON.stringify(sha)})) {
-  console.error("fixture received the wrong review mode, model or prompt"); process.exit(93);
+const [mode, flag, session, ...rest] = argv;
+const expected = ${JSON.stringify(scenario.commandLine ? ["--model", model] : [])};
+if (mode !== "-p" || flag !== "--session" || !session?.endsWith("/session.jsonl") ||
+    JSON.stringify(rest.slice(0, -1)) !== JSON.stringify(expected) || !rest.at(-1)?.includes(${JSON.stringify(sha)})) {
+  console.error("fixture received the wrong review mode, session, model or prompt"); process.exit(93);
 }
 appendFileSync(${JSON.stringify(calls)}, "called\\n");
 process.stdout.write(${JSON.stringify(scenario.stdout)});
@@ -103,10 +105,16 @@ process.exit(${scenario.agentCode});
 
     expect(code, stderr).toBe(scenario.code);
     expect(existsSync(calls), stderr).toBe(true);
-    expect(readFileSync(calls, "utf8")).toBe("called\n");
+    // A run that exits 0 without a VERDICT line is tried once more; every other outcome is one run.
+    const runs = scenario.agentCode === 0 && scenario.verdict === undefined ? 2 : 1;
+    expect(readFileSync(calls, "utf8")).toBe("called\n".repeat(runs));
+    const attempts = join(home, "receipts", `${key}.attempts`);
+    const kept = readdirSync(attempts).map((name) => readFileSync(join(attempts, name, "stdout"), "utf8"));
+    expect(kept).toEqual(Array.from({ length: runs }, () => scenario.stdout));
     const receipt = join(home, "receipts", `${key}.json`);
+    const full = join(home, "receipts", `${key}.md`);
     if (scenario.verdict !== undefined) {
-      expect(stdout).toBe(`REVIEW ${pr} head=${sha} verdict=${scenario.verdict}\n`);
+      expect(stdout).toBe(`REVIEW ${pr} head=${sha} verdict=${scenario.verdict} review=${full}\n`);
       expect(JSON.parse(readFileSync(receipt, "utf8"))).toEqual({
         pr,
         sha,
@@ -114,19 +122,16 @@ process.exit(${scenario.agentCode});
         model,
         at: expect.any(Number),
         summary: scenario.stdout.trim(),
+        review: full,
       });
+      expect(readFileSync(full, "utf8")).toBe(scenario.stdout);
     } else {
       expect(stdout).toBe("");
       expect(existsSync(receipt)).toBe(false);
-      expect(stderr).toContain(scenario.agentCode === 0 ? "no VERDICT line" : "reviewer exited 23");
-      if (!scenario.stdout.includes("VERDICT:")) {
-        const files = readdirSync(join(home, "receipts"));
-        expect(files).toHaveLength(1);
-        const file = files[0];
-        if (!file) throw new Error("missing review diagnostic");
-        expect(file).toEndWith(".noverdict.txt");
-        expect(readFileSync(join(home, "receipts", file), "utf8")).toBe(scenario.stdout);
-      }
+      expect(stderr).toContain(scenario.agentCode === 0 ? "no VERDICT line twice" : "reviewer exited 23");
+      // A reviewer that gave no verdict twice leaves its last output where the review would have gone.
+      expect(existsSync(full)).toBe(scenario.agentCode === 0);
+      if (scenario.agentCode === 0) expect(readFileSync(full, "utf8")).toBe(scenario.stdout);
     }
   } finally {
     rmSync(root, { recursive: true, force: true });

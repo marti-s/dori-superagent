@@ -149,6 +149,7 @@ describe("reviewCommand and DORI_PROMPTS_DIR", () => {
     expect(await review({ ...d, agentCmd: "'unterminated" }, "o/r#5", "ignored/model")).toEqual({
       verdict: "CLEAR",
       sha: head,
+      review: join(d.store.root, "receipts", `o__r_5@${head}.md`),
     });
     expect(hookCalls(w, "my-reviewer")).toEqual([["my-reviewer", "o/r", "5", head, "o/r#5"]]);
     expect(w.calls.some((c) => c.cmd === "omo")).toBe(false);

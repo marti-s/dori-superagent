@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { appendQueue, inboxFile, inboxRefs, readQueue, writeQueue } from "./inbox-files.ts";
 import { takeInboxLock } from "./inbox-lock.ts";
+import { readReceipt, saveReceipt } from "./receipts.ts";
 import { refFromText, refText, sameSession } from "./refs.ts";
 import type { SessionRef } from "./runtime/types.ts";
 import {
@@ -116,16 +117,13 @@ export class Store {
     return inboxRefs(this.root).filter((r) => this.queued(r).length > 0);
   }
 
-  private receiptPath(pr: string, sha: string): string {
-    return join(this.root, "receipts", `${pr.replaceAll("/", "__").replace("#", "_")}@${sha}.json`);
-  }
-
-  saveReceipt(r: ReviewReceipt): void {
-    this.writeJson(this.receiptPath(r.pr, r.sha), r);
+  /** Writes the reviewer's whole output beside the receipt, then the receipt pointing at it. */
+  saveReceipt(r: Omit<ReviewReceipt, "review">, fullText: string): ReviewReceipt {
+    return saveReceipt(this.root, r, fullText);
   }
 
   receipt(pr: string, sha: string): ReviewReceipt | undefined {
-    return this.readJson(this.receiptPath(pr, sha));
+    return readReceipt(this.root, pr, sha);
   }
 
   // ---------- backlog ----------

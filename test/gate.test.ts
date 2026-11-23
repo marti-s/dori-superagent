@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { mergeGate, review } from "../src/gate.ts";
+import { reviewTimeoutMinutes } from "../src/harness.ts";
 import type { World } from "./fake.ts";
 import { setup } from "./harness-setup.ts";
 
@@ -46,47 +47,48 @@ describe("review + merge gate", () => {
     expect(w.usage.filter((e) => e.name === "dori.review_completed")).toHaveLength(2);
   });
 
-  test("exit 0 without a VERDICT line: bounded stdout tail kept privately, no receipt", async () => {
+  test("a review longer than 4000 characters keeps its start and its end: the full text is saved beside the receipt", async () => {
     const { w, d } = setup();
     gh(w, []);
-    const lines = Array.from({ length: 205 }, (_, i) => `line-${i + 1}`);
-    w.reviewer = () => ({ code: 0, stdout: lines.join("\n") });
-    const failure: unknown = await review(d, "o/r#8").then(
-      () => undefined,
-      (e: unknown) => e,
-    );
-    expect(failure).toBeInstanceOf(Error);
-    const files = readdirSync(join(d.store.root, "receipts")).filter((n) => n.endsWith(".noverdict.txt"));
-    expect(files).toHaveLength(1);
-    const name = files[0];
-    if (!name || !(failure instanceof Error)) throw new Error("missing diagnostic file or review error");
-    expect(name).toStartWith(`o__r_8@${head}`);
-    const diagnostic = join(d.store.root, "receipts", name);
-    expect(failure.message).toContain("no VERDICT");
-    expect(failure.message).toContain(diagnostic);
-    expect(statSync(diagnostic).mode & 0o777).toBe(0o600);
-    expect(readFileSync(diagnostic, "utf8").split("\n")).toEqual(lines.slice(5));
-    expect(d.store.receipt("o/r#8", head)).toBeUndefined();
+    const findings = Array.from(
+      { length: 200 },
+      (_, i) => `MEDIUM src/f${i}.ts:${i} a finding long enough to fill the review`,
+    ).join("\n");
+    const stdout = `SUMMARY: two blocking bugs\nHIGH src/a.ts:1 the most severe finding\n${findings}\nVERDICT: BLOCK`;
+    expect(stdout.length).toBeGreaterThan(4000);
+    w.reviewer = () => ({ code: 0, stdout });
+    const r = await review(d, "o/r#9");
+    const receipt = d.store.receipt("o/r#9", head);
+    expect(receipt?.review).toBe(r.review);
+    expect(r.review).toBe(join(d.store.root, "receipts", `o__r_9@${head}.md`));
+    expect(readFileSync(r.review, "utf8")).toBe(`${stdout}\n`);
+    expect(statSync(r.review).mode & 0o777).toBe(0o600);
+    expect(receipt?.summary.length).toBeLessThanOrEqual(4000);
+    expect(receipt?.summary).toStartWith("SUMMARY: two blocking bugs\nHIGH src/a.ts:1 the most severe finding");
+    expect(receipt?.summary).toEndWith("VERDICT: BLOCK");
   });
 
-  test("nonzero exit without a VERDICT line: stdout tail kept too, exit code in the error, no receipt", async () => {
+  test("the built-in reviewer is run with a fresh session file per attempt and the review deadline", async () => {
     const { w, d } = setup();
     gh(w, []);
-    w.reviewer = () => ({ code: 9, stdout: "partial reviewer output" });
-    const failure: unknown = await review(d, "o/r#9").then(
-      () => undefined,
-      (e: unknown) => e,
-    );
-    expect(failure).toBeInstanceOf(Error);
-    const files = readdirSync(join(d.store.root, "receipts")).filter((n) => n.endsWith(".noverdict.txt"));
-    expect(files).toHaveLength(1);
-    const name = files[0];
-    if (!name || !(failure instanceof Error)) throw new Error("missing diagnostic file or review error");
-    const diagnostic = join(d.store.root, "receipts", name);
-    expect(failure.message).toContain("reviewer exited 9");
-    expect(failure.message).toContain(diagnostic);
-    expect(readFileSync(diagnostic, "utf8")).toBe("partial reviewer output");
-    expect(statSync(diagnostic).mode & 0o777).toBe(0o600);
-    expect(d.store.receipt("o/r#9", head)).toBeUndefined();
+    const runs: { argv: readonly string[]; timeoutMs: number | undefined }[] = [];
+    const exec: typeof d.exec = (cmd, argv, options) => {
+      if (cmd === "omo") runs.push({ argv, timeoutMs: options?.timeoutMs });
+      return w.exec(cmd, argv, options);
+    };
+    await review({ ...d, exec }, "o/r#10", "some/model");
+    expect(runs).toHaveLength(1);
+    const [mode, flag, session, ...rest] = runs[0]?.argv ?? [];
+    expect([mode, flag, rest.slice(0, 2)]).toEqual(["-p", "--session", ["--model", "some/model"]]);
+    expect(session).toMatch(new RegExp(`/receipts/o__r_10@${head}\\.attempts/attempt-[A-Za-z0-9]{6}/session\\.jsonl$`));
+    expect(runs[0]?.timeoutMs).toBe(25 * 60_000);
+  });
+
+  test("DORI_REVIEW_TIMEOUT_MIN sets the reviewer timeout; unset is 25 minutes and a bad value is refused", () => {
+    expect(reviewTimeoutMinutes(undefined)).toBe(25);
+    expect(reviewTimeoutMinutes("")).toBe(25);
+    expect(reviewTimeoutMinutes("40")).toBe(40);
+    for (const bad of ["0", "-3", "soon"])
+      expect(() => reviewTimeoutMinutes(bad)).toThrow("DORI_REVIEW_TIMEOUT_MIN must be a positive number of minutes");
   });
 });
