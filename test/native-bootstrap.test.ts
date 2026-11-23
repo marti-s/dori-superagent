@@ -10,7 +10,7 @@ afterEach(cleanup);
 
 test("dirty pinned source refuses before any interpreter starts", async () => {
   const fx = await sandbox();
-  writeFileSync(fx.script, readFileSync(fx.script, "utf8") + "\n# unreviewed change\n");
+  writeFileSync(fx.script, `${readFileSync(fx.script, "utf8")}\n# unreviewed change\n`);
 
   await expect(mergeGate(fx.deps(), pr)).rejects.toThrow("source is dirty");
   expect(fx.backendCalls).toEqual([]);
@@ -28,7 +28,7 @@ test("an unpinned clean main source still executes isolated Python", async () =>
 test("an unpinned dirty main source refuses before imports", async () => {
   const fx = await sandbox();
   const { formaQueueBootstrap: _pin, ...unpinned } = fx.deps();
-  writeFileSync(fx.script, readFileSync(fx.script, "utf8") + "\n# dirty main source\n");
+  writeFileSync(fx.script, `${readFileSync(fx.script, "utf8")}\n# dirty main source\n`);
 
   await expect(mergeGate(unpinned, pr)).rejects.toThrow("source is dirty");
   expect(fx.backendCalls).toEqual([]);

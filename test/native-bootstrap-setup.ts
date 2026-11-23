@@ -80,7 +80,7 @@ print(json.dumps({"status": "queued", "repo": args["--repo"], "pr": int(args["--
     if (command === "git") {
       // Only the network transport is replaced. Fetch, refs, object ancestry, status and tree reads are real Git.
       if (argv.includes("fetch")) {
-        if (fetchFailure) return { code: 1, stdout: "", stderr: "offline " + "x".repeat(4000) };
+        if (fetchFailure) return { code: 1, stdout: "", stderr: `offline ${"x".repeat(4000)}` };
         return spawnExec(
           command,
           argv.map((arg) => (arg === "origin" ? remote : arg)),

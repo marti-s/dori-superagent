@@ -43,7 +43,7 @@ function setup(outputs: readonly ExecResult[]) {
       const session = sessionIndex < 0 ? undefined : argv[sessionIndex + 1];
       if (!session || argv.includes("--no-session")) throw new Error("reviewer requires a durable session");
       // Consume the actual path: reused sessions fail instead of silently overwriting prior evidence.
-      writeFileSync(session, JSON.stringify({ invocation: invocations.length + 1 }) + "\n", { flag: "wx" });
+      writeFileSync(session, `${JSON.stringify({ invocation: invocations.length + 1 })}\n`, { flag: "wx" });
       invocations.push({ session, timeoutMs: opts?.timeoutMs });
       w.clock += 37;
       return output;
@@ -100,7 +100,7 @@ test.each([
       code: 0,
       timedOut: false,
     });
-    expect(readFileSync(artifact.result.session, "utf8")).toBe(JSON.stringify({ invocation: index + 1 }) + "\n");
+    expect(readFileSync(artifact.result.session, "utf8")).toBe(`${JSON.stringify({ invocation: index + 1 })}\n`);
   }
   const last = kept.at(-1);
   expect(last).toBeDefined();
@@ -234,6 +234,6 @@ test("repeat reviews retain fresh sessions and all earlier artifacts", async () 
   for (const [index, invocation] of invocations.entries()) {
     expect(basename(invocation.session)).toBe("session.jsonl");
     expect(existsSync(join(dirname(invocation.session), "result.json"))).toBe(true);
-    expect(readFileSync(invocation.session, "utf8")).toBe(JSON.stringify({ invocation: index + 1 }) + "\n");
+    expect(readFileSync(invocation.session, "utf8")).toBe(`${JSON.stringify({ invocation: index + 1 })}\n`);
   }
 });
