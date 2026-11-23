@@ -122,7 +122,7 @@ test.skipIf(!hcBin)(
 );
 
 test.skipIf(!hcBin)(
-  "dori ready then done kills and removes the lane's terminal",
+  "dori ready then done stops the lane's terminal",
   async () => {
     const evidence = `file://${join(laneHome, "brief.md")}`;
     expect(await dori(laneHome, "ready", "e2e-k", "--text", "e2e-hc finished", "--evidence", evidence)).toContain(
