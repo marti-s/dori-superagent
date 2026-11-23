@@ -5,6 +5,19 @@ import type { ThreadLedger } from "./thread-ledger.ts";
 export type SlackAuth = { readonly token: string; readonly cookie?: string };
 export type Posted = { readonly channel: string; readonly ts: string };
 
+/**
+ * Methods the Web API reads only from a form body: given JSON they answer `invalid_arguments` whatever the arguments
+ * (#180, measured against the live API both ways). Their parameters are flat strings and numbers, which a form can carry.
+ */
+const FORM_METHODS: ReadonlySet<string> = new Set(["conversations.replies", "files.getUploadURLExternal"]);
+
+const asForm = (params: Record<string, unknown>): string =>
+  new URLSearchParams(
+    Object.entries(params).flatMap(([k, v]): [string, string][] =>
+      v === undefined || v === null ? [] : [[k, String(v)]],
+    ),
+  ).toString();
+
 export class Slack {
   constructor(
     private readonly http: Http,
@@ -23,11 +36,14 @@ export class Slack {
   }
 
   async call(method: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const form = FORM_METHODS.has(method);
     const res = await withBackoff(this.http, this.clock, {
       method: "POST",
       url: `${this.base}/${method}`,
-      headers: this.headers(true),
-      body: JSON.stringify(params),
+      headers: form
+        ? { ...this.headers(false), "Content-Type": "application/x-www-form-urlencoded; charset=utf-8" }
+        : this.headers(true),
+      body: form ? asForm(params) : JSON.stringify(params),
     });
     const body = JSON.parse(res.body || "{}") as Record<string, unknown>;
     if (res.status !== 200 || body["ok"] !== true)

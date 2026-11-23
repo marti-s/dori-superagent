@@ -4,6 +4,7 @@ import type { FlowDeps } from "./done-flow.ts";
 import type { SlackAuth } from "./messenger/slack.ts";
 import { type Lane, statusOf } from "./registry.ts";
 import { runtimesOf } from "./run.ts";
+import { slackToken } from "./slack-token.ts";
 
 export const die = (message: string, code = 1): never => {
   console.error(message);
@@ -14,6 +15,15 @@ export const die = (message: string, code = 1): never => {
 export const slackAuth = (token: string): SlackAuth => {
   const cookie = process.env["DORI_SLACK_COOKIE"];
   return { token, ...(cookie !== undefined ? { cookie } : {}) };
+};
+
+/** The Slack token from DORI_SLACK_TOKEN or the file DORI_SLACK_TOKEN_FILE names; a bad token file is refused. */
+export const envSlackToken = (): string | undefined => {
+  try {
+    return slackToken();
+  } catch (e) {
+    return die(e instanceof Error ? e.message : String(e));
+  }
 };
 
 export const every = async (minutes: number, tick: () => Promise<void>): Promise<void> => {

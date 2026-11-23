@@ -82,8 +82,9 @@ test("boot reports vanished panes, journals and stale watches, and writes nothin
   const before = snapshot(state.dir);
   // When boot runs.
   const result = await bootCheck(deps);
-  // Then every finding is printed, the exit is clean, and no file changed.
-  expect(result.exitCode).toBe(0);
+  // Then every finding is printed, the vanished open lane fails the boot as drift, and no file changed.
+  expect(result.exitCode).toBe(1);
+  expect(result.lines).toContain("DRIFT n=1 api-release");
   expect(result.lines).toContain(
     "SLACK authenticated user=U_FIXTURE team=T_FIXTURE (auth.test only; inbox delivery unverified)",
   );
@@ -97,7 +98,9 @@ test("boot reports vanished panes, journals and stale watches, and writes nothin
   expect(result.lines).toContain('STOP in the owner session only: kill_bash({"bash_id":"mon_REALFIXTURE"})');
   expect(result.lines.some((l) => l.startsWith("VANISHED closed"))).toBe(false);
   expect(snapshot(state.dir)).toEqual(before);
-  expect(world.calls.every((c) => c[0] === "herdr" && c[1] === "pane" && c[2] === "list")).toBe(true);
+  expect(world.calls.every((c) => c[0] === "herdr" && c[1] === "pane" && ["list", "get"].includes(c[2] ?? ""))).toBe(
+    true,
+  );
 });
 
 test("boot on a state dir with no lanes directory leaves it byte-identical", async () => {

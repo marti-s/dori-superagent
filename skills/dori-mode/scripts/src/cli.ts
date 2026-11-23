@@ -48,7 +48,7 @@ const USAGE = `dori <command> [options]
   heavy <label> -- <command ...>       run a heavy command when a slot is free and load is low
   can-launch                           exit 0 if the host has room for a new lane, else print why and exit 4
   send <slack|telegram|discord> --to TARGET --text TEXT [--thread ID] [--edit ID]
-                                       post or edit a message (tokens from DORI_SLACK_TOKEN, DORI_TELEGRAM_TOKEN, DORI_DISCORD_TOKEN)
+                                       post or edit a message (tokens from DORI_SLACK_TOKEN or the file DORI_SLACK_TOKEN_FILE names, DORI_TELEGRAM_TOKEN, DORI_DISCORD_TOKEN)
   presence <slack|discord>             keep the account shown as online until stopped
   transcribe <audio-file>              run hooks.transcribe and print the text
   inbound slack|telegram [--loop MIN]  print INBOUND lines: Slack unread thread replies / Telegram owner DMs, edits and media + configured topic

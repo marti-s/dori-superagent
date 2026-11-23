@@ -1,17 +1,24 @@
+import { configPath } from "./config.ts";
 import type { FlowDeps } from "./done-flow.ts";
 import { shellQuote } from "./launch-footer.ts";
 import type { SessionInfo } from "../../../../src/runtime/types.ts";
 import type { Slack } from "./messenger/slack.ts";
+import { driftCheck, workspaceCheck } from "./boot-checks.ts";
 import { type BootLane, finished, monitorCleanup, readMonitorManifests } from "./boot-monitors.ts";
 import { type Lane, statusOf } from "./registry.ts";
 import { reconcilePanes } from "./reconcile.ts";
 import { runtimesOf } from "./run.ts";
 import { listSessions } from "./sessions.ts";
 import { ReportError, type Reports } from "./reports.ts";
+import { slackToken, TokenFileError, tokenFileNotice } from "./slack-token.ts";
 import type { Worklog } from "./worklog.ts";
 import { worklogLines } from "./worklog-render.ts";
 
-export type SlackCheck = () => Promise<{ readonly userId: string; readonly teamId: string } | null>;
+export type SlackCheck = () => Promise<{
+  readonly userId: string;
+  readonly teamId: string;
+  readonly notice?: string;
+} | null>;
 export type BootDeps = Pick<FlowDeps, "run" | "registry" | "config" | "clock" | "rts" | "env"> & {
   readonly reports: Reports;
   readonly worklog: Worklog;
@@ -40,9 +47,29 @@ export const slackAuthCheck =
   };
 
 /**
+ * The boot Slack step from the environment: the token is read inside the step, so a bad token file throws
+ * TokenFileError there and boot reports it as a failed check instead of exiting before the other checks.
+ */
+export const envSlackCheck =
+  (
+    client: (token: string) => Pick<Slack, "call">,
+    env: Readonly<Record<string, string | undefined>> = process.env,
+    platform: string = process.platform,
+    configFile: string = configPath(),
+  ): SlackCheck =>
+  async () => {
+    // A token file outside this home is refused here too, so the lead sees it at boot and not only at a launch.
+    // One resolution: the string home-checked is the string read (tokenFileToRead).
+    const token = slackToken(env, platform, process.getuid?.(), configFile);
+    const auth = await slackAuthCheck(token ? client(token) : null)();
+    const notice = tokenFileNotice(env, platform);
+    return auth && notice ? { ...auth, notice } : auth;
+  };
+
+/**
  * Read-only recovery check after a restart or compaction: messenger auth, lanes whose pane vanished, panes no lane
  * owns, each lane's journal state, and persistent watches left on finished lanes. It changes nothing: no registry
- * write, no relaunch, no stopped watch. Exit 1 when any input could not be read.
+ * write, no relaunch, no stopped watch. Exit 1 when any input could not be read, on drift, or on a config warning.
  */
 export const bootCheck = async (deps: BootDeps): Promise<{ exitCode: number; lines: string[] }> => {
   const lines: string[] = [];
@@ -125,7 +152,13 @@ export const bootCheck = async (deps: BootDeps): Promise<{ exitCode: number; lin
         `VANISHED ${lane.key} pane=${lane.pane} status=${lane.status}; registry and worktrees preserved; no relaunch`,
       );
     if (result.unregistered.length) lines.push(`UNREGISTERED ${result.unregistered.join(" ")}`);
+    const drift = await driftCheck(rts, lanes, panes);
+    lines.push(...drift.lines);
+    if (drift.failed) failed = true;
   }
+  const warnings = workspaceCheck(deps.config, rts.choice?.kind, panes);
+  if (warnings.length) failed = true;
+  lines.push(...warnings);
   lines.push(...journals);
   // The lead's open requests, each with its Next line, so a compacted lead resumes from the record, not from memory.
   try {
@@ -186,9 +219,11 @@ export const bootCheck = async (deps: BootDeps): Promise<{ exitCode: number; lin
           ? `SLACK authenticated user=${auth.userId} team=${auth.teamId} (auth.test only; inbox delivery unverified)`
           : "SLACK skipped (DORI_SLACK_TOKEN not set)",
       );
-  } catch {
+    if (auth && auth !== "timeout" && auth.notice) lines.push(`SLACK token-file: ${auth.notice}`);
+  } catch (e) {
     failed = true;
-    lines.push("SLACK auth failed");
+    // A token file error names the path, never the value; any other error may carry provider text, so it is not shown.
+    lines.push(e instanceof TokenFileError ? `SLACK token-file: ${e.message}` : "SLACK auth failed");
   } finally {
     clearTimeout(timer);
   }

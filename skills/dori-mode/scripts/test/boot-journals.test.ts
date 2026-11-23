@@ -85,8 +85,9 @@ test("the launch's activity record is not a report: a lane that never reported r
 });
 
 test("a launched lane with no journal at all reads NO-REPORT, never nothing", async () => {
-  // Given a launched lane that has not written reports.jsonl yet.
+  // Given a launched lane, on a live pane, that has not written reports.jsonl yet.
   const world = newWorld();
+  world.panes = [{ pane_id: "w1:silent", workspace_id: "w1", agent: "omo", agent_status: "working" }];
   const deps = bootDeps(world);
   await deps.registry.write(launched("silent"));
   // When boot runs; then the lane is listed as having no journal, and that alone is not a failure.

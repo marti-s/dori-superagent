@@ -2,6 +2,9 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { deadPaneTick, newDeadPaneState } from "../src/dead-panes.ts";
 import { freshnessTick, lastReportLine } from "../src/freshness.ts";
 import type { Lane } from "../src/registry.ts";
+import { runtimesFor } from "../src/run.ts";
+import { syncRegistry } from "../src/sync.ts";
+import { hcTerm } from "./hc-runner.ts";
 import { depsFor, fakeClock, newWorld, sent, withState, type World } from "./fakes.ts";
 
 const T0 = Date.parse("2026-01-01T12:00:00.000Z");
@@ -62,6 +65,43 @@ test("a stopped agent pane is reported once per hour and the lead pane is never 
   expect(await deadPaneTick(deps.run, deps.config, seen, "2026-01-01T12", st)).toEqual(["DEAD_PANE w:p1"]);
   expect(await deadPaneTick(deps.run, deps.config, seen, "2026-01-01T12", st)).toEqual([]);
   expect(await deadPaneTick(deps.run, deps.config, seen, "2026-01-01T13", st)).toEqual(["DEAD_PANE w:p1"]);
+});
+
+test("with workspaces set, herdr panes are still filtered by their workspace", async () => {
+  world.panes = [
+    { pane_id: "w:p1", workspace_id: "w" },
+    { pane_id: "x:p2", workspace_id: "x" },
+  ];
+  world.screen = "omo has stopped\n$ ";
+  const deps = depsFor(world, fakeClock(T0), state.dir, { workspaces: ["w"] });
+  const st = newDeadPaneState();
+  const tick = () => deadPaneTick(deps.run, deps.config, new Set(), "2026-01-01T12", st);
+  expect(await tick()).toEqual([]);
+  expect(await tick()).toEqual(["DEAD_PANE w:p1"]);
+});
+
+test("with workspaces set, hc lanes in a watched dori.group are reported and the others are not (#196)", async () => {
+  const stopped = { status: null, foreground: null, screen: "omo has stopped\n$ " };
+  world.terminals = {
+    t1: hcTerm({ ...stopped, labels: { "dori.group": "lanes" } }),
+    t2: hcTerm({ ...stopped, labels: { "dori.group": "other" } }),
+  };
+  const deps = depsFor(world, fakeClock(T0), state.dir, { runtime: "hc", workspaces: ["lanes"] });
+  const rts = runtimesFor(deps.config, {}, deps.run);
+  const st = newDeadPaneState();
+  const tick = () => deadPaneTick(deps.run, deps.config, new Set(), "2026-01-01T12", st, rts);
+  expect(await tick()).toEqual([]);
+  expect(await tick()).toEqual(["DEAD_PANE t1"]);
+});
+
+test("with workspaces set, sync lists an unregistered hc agent in a watched dori.group and skips the others", async () => {
+  world.terminals = {
+    t1: hcTerm({ labels: { "dori.group": "lanes" } }),
+    t2: hcTerm({ labels: { "dori.group": "other" } }),
+  };
+  const deps = depsFor(world, fakeClock(T0), state.dir, { runtime: "hc", workspaces: ["lanes"] });
+  const { unregistered } = await syncRegistry({ ...deps, rts: runtimesFor(deps.config, {}, deps.run) }, false);
+  expect(unregistered.map((row) => row.pane)).toEqual(["t1"]);
 });
 
 test("a reworded stop message is not dead: with no alive status it is unrecognised, and repeated reads raise one alert", async () => {

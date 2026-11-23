@@ -1,0 +1,26 @@
+{
+  "skills/dori-mode/scripts/test/loop-flag.test.ts": {
+    "dori-testing/no-flake-masking": 1
+  },
+  "skills/dori-mode/scripts/test/send-cli-empty.test.ts": {
+    "dori-testing/no-flake-masking": 1
+  },
+  "skills/dori-mode/scripts/test/send-cli.test.ts": {
+    "dori-testing/no-flake-masking": 1
+  },
+  "skills/dori-mode/scripts/test/worklog-records.test.ts": {
+    "dori-testing/no-flake-masking": 1
+  },
+  "test/e2e-hc.test.ts": {
+    "dori-testing/no-flake-masking": 5
+  },
+  "test/e2e-migrate.test.ts": {
+    "dori-testing/no-flake-masking": 1
+  },
+  "test/e2e.test.ts": {
+    "dori-testing/no-flake-masking": 2
+  },
+  "test/module-graph.test.ts": {
+    "dori-testing/no-flake-masking": 1
+  }
+}

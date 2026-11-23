@@ -55,7 +55,7 @@ Slack、Discord 和 Telegram 都在 `skills/dori-mode/scripts/src/messenger/` �
 
 ### Dori mode，你对话的那个 bot
 
-你需要 herdr、Bun 1.4.4 或更新版本、git，以及 GitHub CLI `gh`。
+你需要 herdr、Bun 1.4.5 或更新版本、git，以及 GitHub CLI `gh`。
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superagent/main/install.sh | bash
@@ -69,7 +69,7 @@ curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superagent/main/i
 
 ### harness
 
-你需要 Bun 1.4.4 或更新版本、herdr、omo，以及 `gh`（用于 PR head SHA、检查和 merge）。
+你需要 Bun 1.4.5 或更新版本、herdr、omo，以及 `gh`（用于 PR head SHA、检查和 merge）。
 
 ```sh
 git clone https://github.com/sisyphuslabs/dori-superagent

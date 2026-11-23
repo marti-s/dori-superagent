@@ -12,6 +12,8 @@ export type HcTerm = {
   name?: string;
   labels: Record<string, string>;
   screen?: string;
+  /** Terminal width, as `hc get` reports it. */
+  cols?: number;
   turn: number;
 };
 

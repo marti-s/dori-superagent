@@ -1,6 +1,6 @@
 /** dori sync, boot, verify-pr and the host loops: watch, freshness, dead-panes, guard, heavy, can-launch. */
 import { dirname, join } from "node:path";
-import { bootCheck, slackAuthCheck } from "./boot.ts";
+import { bootCheck, envSlackCheck } from "./boot.ts";
 import { type Command, die, every, slackAuth } from "./cli-context.ts";
 import { deadPaneTick, newDeadPaneState } from "./dead-panes.ts";
 import { watchTick } from "./done-flow.ts";
@@ -26,8 +26,6 @@ const sync: Command = async ({ values, deps }) => {
 };
 
 const boot: Command = async ({ deps, config }) => {
-  const token = process.env["DORI_SLACK_TOKEN"];
-  const slack = token ? new Slack(fetchHttp, realClock, slackAuth(token)) : null;
   const sessionDirs = [
     process.env["PI_SESSION_DIR"],
     process.env["PI_SESSION_FILE"] && dirname(process.env["PI_SESSION_FILE"]),
@@ -36,7 +34,8 @@ const boot: Command = async ({ deps, config }) => {
     ...deps,
     reports: new Reports(config.stateDir),
     worklog: new Worklog(config.stateDir),
-    slack: slackAuthCheck(slack),
+    // A bad token file is a failed boot line, not an exit: boot is the read-only report a fresh lead depends on.
+    slack: envSlackCheck((token) => new Slack(fetchHttp, realClock, slackAuth(token))),
     monitorDirs: sessionDirs.flatMap((dir) => (dir ? [join(dir, "extensions", "terminal")] : [])),
   });
   for (const line of r.lines) console.log(line);

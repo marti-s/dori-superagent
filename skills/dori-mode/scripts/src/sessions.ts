@@ -1,6 +1,6 @@
 // Sessions across every runtime the skill talks to: one `Runtimes` registry, each stored ref answered by its own kind.
 import type { Runtimes } from "../../../../src/runtime/registry.ts";
-import type { DeliverWhen, SessionInfo, SessionRef } from "../../../../src/runtime/types.ts";
+import { type DeliverWhen, formatRef, type SessionInfo, type SessionRef } from "../../../../src/runtime/types.ts";
 import type { Clock } from "./run.ts";
 
 export class UnsafeTextError extends Error {}
@@ -29,6 +29,23 @@ export const listSessions = async (
     out.push(...(await rt.list(options.group === undefined ? undefined : { group: options.group })));
   }
   return out;
+};
+
+/**
+ * The sessions of the watched groups, each group listed by name; every session when none is watched. hc names a
+ * session's group only when it is asked for that group (its `dori.group` label), so listing everything and filtering
+ * by `ref.group` would drop every hc session (#196); herdr lists by workspace either way. A session is kept once.
+ */
+export const listWatched = async (
+  rts: Runtimes,
+  groups: readonly string[],
+  lanes?: readonly { readonly sessionRef?: SessionRef }[],
+): Promise<SessionInfo[]> => {
+  if (groups.length === 0) return listSessions(rts, lanes ? { lanes } : {});
+  const out = new Map<string, SessionInfo>();
+  for (const group of new Set(groups))
+    for (const s of await listSessions(rts, lanes ? { group, lanes } : { group })) out.set(formatRef(s.ref), s);
+  return [...out.values()];
 };
 
 export const readScreen = async (rts: Runtimes, ref: SessionRef, lines?: number): Promise<string> =>

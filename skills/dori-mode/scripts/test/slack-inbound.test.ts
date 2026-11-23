@@ -16,14 +16,32 @@ type Workspace = {
   view: unknown[];
   counts: Record<string, unknown>;
   nextTs: number;
+  /** The Slack error a method answers instead of its result. */
+  refuse?: Record<string, string>;
 };
+
+// Like the live API (#180): these read only a form body and answer invalid_arguments to JSON.
+const FORM_ONLY = new Set(["conversations.replies", "files.getUploadURLExternal"]);
 
 const slackFake = (w: Workspace) => {
   const calls: string[] = [];
+  const types: Record<string, string> = {};
   const http: Http = async (req: HttpRequest): Promise<HttpResponse> => {
     const method = req.url.split("/").pop() ?? "";
     calls.push(method);
-    const p = JSON.parse(String(req.body ?? "{}")) as Record<string, unknown>;
+    const type = String(req.headers?.["Content-Type"] ?? "");
+    types[method] = type;
+    const form = type.startsWith("application/x-www-form-urlencoded");
+    const raw = String(req.body ?? "");
+    const p: Record<string, unknown> = form ? Object.fromEntries(new URLSearchParams(raw)) : JSON.parse(raw || "{}");
+    const answer = (error: string): HttpResponse => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ ok: false, error }),
+    });
+    if (FORM_ONLY.has(method) && !form) return answer("invalid_arguments");
+    const refusal = w.refuse?.[method];
+    if (refusal !== undefined) return answer(refusal);
     const body = (b: unknown): HttpResponse => ({
       status: 200,
       headers: {},
@@ -46,15 +64,15 @@ const slackFake = (w: Workspace) => {
     if (method === "client.counts") return body(w.counts);
     return body({});
   };
-  return { http, calls };
+  return { http, calls, types };
 };
 
 const setup = (name: string) => {
   const w: Workspace = { replies: {}, view: [], counts: { channels: [], ims: [], mpims: [] }, nextTs: 1000 };
-  const { http, calls } = slackFake(w);
+  const { http, calls, types } = slackFake(w);
   const ledger = new ThreadLedger(join(state.dir, `${name}.json`));
   const slack = new Slack(http, fakeClock(0), { token: "t" }, "https://slack.test/api", ledger);
-  return { w, slack, ledger, calls };
+  return { w, slack, ledger, calls, types };
 };
 
 test("a guest's untagged reply in a thread the Dori started through a raw API call is still picked up", async () => {

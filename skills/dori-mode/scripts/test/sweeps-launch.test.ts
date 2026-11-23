@@ -29,7 +29,7 @@ test("launch reports STARTUP_OK only on a ready agent status that shows a goal; 
     status: string | undefined | (string | undefined)[],
     screen: string | string[],
     key: string,
-    patch: { goalMarker?: string } = {},
+    patch: { goalMarker?: string; startupWaitSeconds?: number } = {},
   ) => {
     const statuses = Array.isArray(status) ? [...status] : [status];
     writeFileSync(brief, "# brief\n");
@@ -70,7 +70,7 @@ test("launch reports STARTUP_OK only on a ready agent status that shows a goal; 
   expect(await run("working", ["❯ ", "❯ ", "❯ ", goal], "slow-goal-lane")).toBe("STARTUP_OK slow-goal-lane w:p9");
   expect(await run("idle", "❯ ", "no-goal-lane")).toStartWith("STARTUP_NO_GOAL no-goal-lane w:p9");
   expect(await run("idle", ["❯ ", "❯ ", "usage limit reached\n❯ "], "limit-lane")).toBe(
-    "STARTUP_ERROR limit-lane w:p9: usage limit",
+    "STARTUP_ERROR limit-lane w:p9: usage limit reached",
   );
   // A working agent has not failed: its own output may quote the failure phrases (here, while it reads launch.ts).
   expect(
@@ -107,9 +107,23 @@ test("launch reports STARTUP_OK only on a ready agent status that shows a goal; 
   expect(await run("idle", "No API key found\n❯ ", "err-lane")).toBe("STARTUP_ERROR err-lane w:p9: No API key");
   expect(await run("blocked", "❯ ", "blocked-lane")).toStartWith("STARTUP_UNCONFIRMED blocked-lane w:p9");
   expect(await run("done", "❯ ", "done-lane")).toStartWith("STARTUP_UNCONFIRMED done-lane w:p9");
+
+  // #202: omo starts despite a user extension it cannot load, so a line that is that warning is no start failure...
+  const warning = `Warning: Failed to load extension "ext.js": Failed to load extension: Cannot find module '../gone.mjs'`;
+  expect(await run("idle", [`${warning}\n❯ `, `${warning}\n${goal}`], "ext-warning-lane")).toBe(
+    "STARTUP_OK ext-warning-lane w:p9",
+  );
+  // ...but a real missing module on another line of the same screen still is, with or without a status.
+  const missing = `${warning}\nError: Cannot find module '/repo/dist/cli.js'\n$ `;
+  expect(await run(undefined, missing, "module-lane")).toBe("STARTUP_ERROR module-lane w:p9: Cannot find module");
+  expect(waits).toBe(1);
+  expect(await run(["unknown", "unknown", "idle"], ["PS> & omo", missing], "late-module-lane")).toBe(
+    "STARTUP_ERROR late-module-lane w:p9: Cannot find module",
+  );
+  expect(waits).toBe(2);
 });
 
-test("STARTUP_NO_GOAL names the time the launch really waited, not the planned 80 s", async () => {
+test("STARTUP_NO_GOAL names the time the launch really waited, not the planned 180 s", async () => {
   // Given a host where every sleep overruns by 5 s, and an agent that never shows a goal.
   const brief = join(state.dir, "brief.md");
   writeFileSync(brief, "# brief\n");
@@ -146,9 +160,9 @@ test("STARTUP_NO_GOAL names the time the launch really waited, not the planned 8
       return inner(argv);
     },
   };
-  // When the launch gives up on the goal; then the message gives the 20 s check plus six 10 s re-reads, each 5 s late.
+  // When the launch gives up on the goal; then the message gives the 20 s check plus sixteen 10 s re-reads, each 5 s late.
   const { startup } = await launchLane(deps, { key: "late-lane", title: "t", brief, done: "closed acme/app#3" });
-  expect(startup).toStartWith("STARTUP_NO_GOAL late-lane w:p9: the agent is running but shows no goal after 115 s;");
+  expect(startup).toStartWith("STARTUP_NO_GOAL late-lane w:p9: the agent is running but shows no goal after 265 s;");
 });
 
 test("launch registers the lane before it starts the agent, so the lane's first dori report is accepted", async () => {

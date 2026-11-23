@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Installs the dori-mode skill and the `dori` CLI.
+# Installs Doriterm (the doriface-host service with herdr-core) when the machine has none, the dori-mode skill and the
+# `dori` CLI.
 # Usage: curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superagent/main/install.sh | bash
-# Needs: git, bun 1.3+. Optional env: DORI_SRC (clone dir), SKILLS_DIR (where your agent loads skills),
-# DORI_NO_PULL=1 (or true, yes: install an existing checkout as it is, without pulling).
+# Needs: git, bun 1.3+, curl. Optional env: DORI_SRC (clone dir), SKILLS_DIR (where your agent loads skills),
+# DORI_NO_PULL=1 (or true, yes: install an existing checkout as it is, without pulling),
+# DORI_NO_DORITERM=1 (or true, yes: skip Doriterm), DORITERM_INSTALL_URL (Doriterm's installer, default get.doriterm.com).
 set -euo pipefail
 
 repo="https://github.com/sisyphuslabs/dori-superagent.git"
@@ -11,6 +13,34 @@ skills="${SKILLS_DIR:-$HOME/.agents/skills}"
 
 command -v bun >/dev/null || { echo "bun is required: https://bun.sh" >&2; exit 1; }
 command -v git >/dev/null || { echo "git is required" >&2; exit 1; }
+
+# Dori's lanes run in Doriterm terminals. A machine that already has a Doriterm host keeps it, however it got there
+# (the installer, a checkout's setup, or the desktop app's own host): a second host would fight it for the port and
+# would join nothing. Its marks: the binary, a service file, or a state dir holding its keys.
+doriterm_present() {
+  local state="${XDG_STATE_HOME:-$HOME/.local/state}" units="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user" mark
+  command -v doriface-host >/dev/null && return 0
+  for mark in "$HOME/.local/bin/doriface-host" "$state"/doriface-host* "$units"/doriface-host*.service \
+    "$HOME/Library/LaunchAgents"/*doriface-host*.plist; do
+    [ -e "$mark" ] && return 0
+  done
+  return 1
+}
+doriterm="installed"
+if [[ "${DORI_NO_DORITERM:-}" =~ ^(1|true|yes)$ ]]; then
+  echo "DORI_NO_DORITERM=$DORI_NO_DORITERM: skipping Doriterm" >&2
+  doriterm="skipped"
+elif doriterm_present; then
+  echo "Doriterm is already on this machine; leaving it as it is"
+  doriterm="already there"
+else
+  command -v curl >/dev/null || { echo "curl is required to install Doriterm (or set DORI_NO_DORITERM=1)" >&2; exit 1; }
+  echo "Installing Doriterm (its host and herdr-core)"
+  if ! curl -fsSL "${DORITERM_INSTALL_URL:-https://get.doriterm.com}" | sh -s -- --no-pair; then
+    echo "Doriterm's installer failed; its message above says why. To install Dori without it: DORI_NO_DORITERM=1" >&2
+    exit 1
+  fi
+fi
 
 if [ ! -d "$src/.git" ]; then
   git clone --quiet --depth 1 "$repo" "$src"
@@ -46,5 +76,5 @@ fi
 mkdir -p "$HOME/.dori"
 [ -f "$HOME/.dori/config.json" ] || cp "$src/skills/dori-mode/references/config.example.json" "$HOME/.dori/config.json"
 
-echo "Installed. Skill: $skills/dori-mode  CLI: dori  Config: ~/.dori/config.json"
+echo "Installed. Skill: $skills/dori-mode  CLI: dori  Config: ~/.dori/config.json  Doriterm: $doriterm"
 echo "Next: edit ~/.dori/config.json, then tell your agent: Dori mode"

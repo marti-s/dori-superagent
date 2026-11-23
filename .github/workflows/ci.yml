@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.4
+          bun-version: 1.4.5
       - run: bun install --frozen-lockfile
       - run: bun install --frozen-lockfile
         working-directory: skills/dori-mode/scripts
@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.4
+          bun-version: 1.4.5
       - run: bun install --frozen-lockfile
       - run: bun install --frozen-lockfile
         working-directory: skills/dori-mode/scripts
@@ -44,7 +44,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.4
+          bun-version: 1.4.5
       - run: bun install --frozen-lockfile
       - name: Install herdr 0.9.5
         env:
@@ -72,13 +72,13 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.4
+          bun-version: 1.4.5
       - run: bun install --frozen-lockfile
-      - name: Install hc 0.1.17
+      - name: Install hc 0.1.20
         run: |
-          curl -fsSL https://releases.herdr.dev/core/install.sh | HC_VERSION=0.1.17 sh
+          curl -fsSL https://releases.herdr.dev/core/install.sh | HC_VERSION=0.1.20 sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - run: hc update --version 0.1.17
+      - run: hc update --version 0.1.20
       - run: hc --version
       - name: hc e2e (skipped only while the test file does not exist)
         run: |

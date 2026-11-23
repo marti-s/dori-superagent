@@ -3,7 +3,7 @@ import type { FlowDeps } from "./done-flow.ts";
 import { statusOf } from "./registry.ts";
 import { runtimesOf } from "./run.ts";
 import { procTable, resolveSession } from "./session-id.ts";
-import { listSessions } from "./sessions.ts";
+import { listSessions, listWatched } from "./sessions.ts";
 
 export type SyncRow = {
   readonly key: string;
@@ -43,12 +43,12 @@ export const syncRegistry = async (deps: FlowDeps, write: boolean): Promise<Sync
     });
   }
   const owned = new Set(lanes.flatMap((l) => (l.sessionRef ? [formatRef(l.sessionRef)] : [])));
-  const watch = new Set(deps.config.workspaces);
   const skip = new Set([deps.config.leadPane, ...deps.config.ignorePanes]);
+  const watched = deps.config.workspaces.length > 0 ? await listWatched(rts, deps.config.workspaces, lanes) : sessions;
   const unregistered: SyncRow[] = [];
-  for (const s of sessions) {
+  for (const s of watched) {
     const id = s.ref.id;
-    if (owned.has(formatRef(s.ref)) || skip.has(id) || (watch.size > 0 && !watch.has(s.ref.group ?? ""))) continue;
+    if (owned.has(formatRef(s.ref)) || skip.has(id)) continue;
     if (s.agent === undefined) continue;
     const hit = await resolveSession(s.ref, s.cwd ?? "", table, resolveDeps);
     unregistered.push({

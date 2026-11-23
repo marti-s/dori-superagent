@@ -1,7 +1,7 @@
 import type { DoriConfig } from "./config.ts";
 import { Registry } from "./registry.ts";
 import { type ChosenRuntimes, type Runner, runtimesFor } from "./run.ts";
-import { ALIVE_STATUSES, listSessions, readScreen } from "./sessions.ts";
+import { ALIVE_STATUSES, listWatched, readScreen } from "./sessions.ts";
 
 /** Unrecognised ticks in a row before one alert names the pane. */
 export const UNRECOGNISED_ALERT_AFTER = 3;
@@ -25,13 +25,12 @@ export const deadPaneTick = async (
   rts: ChosenRuntimes = runtimesFor(config, process.env, run),
 ): Promise<string[]> => {
   const out: string[] = [];
-  const watch = new Set(config.workspaces);
   const skip = new Set([config.leadPane, ...config.ignorePanes].filter(Boolean));
   const marked = (tail: string) => config.deadPanePatterns.some((p) => tail.includes(p.toLowerCase()));
   const lanes = await new Registry(config.stateDir).open();
-  for (const session of await listSessions(rts, { lanes })) {
+  for (const session of await listWatched(rts, config.workspaces, lanes)) {
     const id = session.ref.id;
-    if (skip.has(id) || (watch.size > 0 && !watch.has(session.ref.group ?? ""))) continue;
+    if (skip.has(id)) continue;
     if (session.status && ALIVE_STATUSES.has(session.status)) {
       state.unknown.delete(id);
       state.lastTail.delete(id);

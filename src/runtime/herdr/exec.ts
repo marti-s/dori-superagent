@@ -24,7 +24,7 @@ export class HerdrCli {
   }
 
   /** `pane read` returns the screen as plain text, not JSON. */
-  async read(paneId: string, lines: number): Promise<string> {
+  async read(paneId: string, lines: number, source: "recent" | "recent-unwrapped" = "recent"): Promise<string> {
     const full = this.session ? ["--session", this.session] : [];
     const res = await this.exec("herdr", [
       ...full,
@@ -34,7 +34,7 @@ export class HerdrCli {
       "--lines",
       String(lines),
       "--source",
-      "recent",
+      source,
     ]);
     if (res.code !== 0) throw new ToolError(["pane", "read", paneId], res, "herdr");
     return res.stdout;

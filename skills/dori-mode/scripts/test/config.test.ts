@@ -79,6 +79,16 @@ test("a goalMarker that is not a string falls back to the default, so a typo nev
   expect((await loadConfig(path, "/home/ana")).goalMarker).toBe("");
 });
 
+test("startupWaitSeconds is a nonnegative number of seconds; anything else falls back to 180", async () => {
+  const path = join(state.dir, "config.json");
+  await Bun.write(path, JSON.stringify({ startupWaitSeconds: 300 }));
+  expect((await loadConfig(path, "/home/ana")).startupWaitSeconds).toBe(300);
+  for (const value of [null, "300", -1, {}, [300]]) {
+    await Bun.write(path, JSON.stringify({ startupWaitSeconds: value }));
+    expect((await loadConfig(path, "/home/ana")).startupWaitSeconds).toBe(180);
+  }
+});
+
 test("runtime is herdr, hc or absent; any other value stops the load with ConfigError", async () => {
   const path = join(state.dir, "config.json");
   for (const value of ["herdr", "hc"] as const) {

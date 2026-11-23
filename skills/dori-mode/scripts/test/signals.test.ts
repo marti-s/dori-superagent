@@ -3,7 +3,8 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { claimDone, watchTick } from "../src/done-flow.ts";
-import { adoptLane, LaunchError } from "../src/launch.ts";
+import { LaunchError } from "../src/launch.ts";
+import { adoptLane } from "../src/launch-adopt.ts";
 import type { Http } from "../src/messenger/http.ts";
 import { statusOf } from "../src/registry.ts";
 import { run } from "../src/run.ts";

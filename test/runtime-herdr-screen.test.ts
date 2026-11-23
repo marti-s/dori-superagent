@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { omoScreenIdle } from "../src/runtime/herdr/index.ts";
-import { ref, world } from "./herdr-recorder.ts";
+import { HerdrRuntime, omoScreenIdle } from "../src/runtime/herdr/index.ts";
+import { recorder, ref, world } from "./herdr-recorder.ts";
 
 const screen = (name: string) => Bun.file(join(import.meta.dir, "fixtures", "screens", `${name}.txt`)).text();
 
@@ -47,5 +47,13 @@ describe("omoScreenIdle (#62: herdr reports an omo with live monitors as working
     w.addPane("w1:p1", "blocked").screen = await screen("omo-idle-live-monitors");
     expect((await rt.probe(ref("w1:p1"))).status).toBe("blocked");
     expect(herdr().some((a) => a[1] === "read")).toBe(false);
+  });
+});
+
+describe("unwrapped read", () => {
+  test("asks herdr for the recent-unwrapped source, so a line wider than the pane comes back as one line", async () => {
+    const r = recorder();
+    await new HerdrRuntime(r.exec, "").read(ref("w1:p1"), 40, { unwrapped: true });
+    expect(r.calls).toEqual([["pane", "read", "w1:p1", "--lines", "40", "--source", "recent-unwrapped"]]);
   });
 });

@@ -97,7 +97,7 @@ Real work runs in its own session, called a lane: a herdr tab, or a labelled ter
 |---|---|
 | `dori launch` / `dori adopt` | open a lane in a new tab, or register one already running |
 | `dori sync [--write]` | rebuild the registry from live panes, report drift |
-| `dori boot` | after a restart or compaction: vanished panes, lane journals, open worklog items, watches left on finished lanes; read-only |
+| `dori boot` | after a restart or compaction: vanished panes, drift count, workspace-filter mismatch, lane journals, open worklog items, watches left on finished lanes; read-only, non-zero exit on drift or a config warning |
 | `dori report` | a lane records a milestone, blocker, question, halt or done in its `reports.jsonl` and prints the `[REPORT]` line |
 | `dori checkpoint` / `dori checkpoints` | a lane records each completed step and its remote receipts once, and reads them back on resume |
 | `dori verify-pr <owner/repo> <num>` | before a PR is called done: commit emails match the repo's identity, fixes come with a test or a `No test:` reason |

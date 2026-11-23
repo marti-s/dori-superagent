@@ -10,6 +10,7 @@
   "defaultModel": "anthropic/claude-opus-5-5",
   "launchKeywords": "ulw set goal and work",
   "goalMarker": "Pursuing goal",
+  "startupWaitSeconds": 180,
   "sessionsDir": "~/.omo/agent/sessions",
   "nudgeAfterMin": 15,
   "postAfterMin": 20,

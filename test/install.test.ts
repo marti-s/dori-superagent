@@ -1,9 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
-// The real install.sh over a checkout of a local upstream; a stub `bun` stands in for `bun install` and `bun link`.
+// The real install.sh over a checkout of a local upstream; a stub `bun` stands in for `bun install` and `bun link`,
+// and a stub `curl` serves a stand-in Doriterm installer that records how it was run.
 const script = resolve(import.meta.dir, "../install.sh");
 const gitEnv = {
   ...process.env,
@@ -14,6 +15,7 @@ const gitEnv = {
   GIT_COMMITTER_NAME: "t",
   GIT_COMMITTER_EMAIL: "t@example.com",
 };
+const gitDir = dirname(Bun.which("git") ?? "/usr/bin/git");
 const roots: string[] = [];
 afterEach(() => {
   for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true });
@@ -45,6 +47,12 @@ function setup() {
   mkdirSync(bin);
   writeFileSync(join(bin, "bun"), "#!/bin/sh\nexit 0\n");
   chmodSync(join(bin, "bun"), 0o755);
+  // Prints a script that records its arguments; DORITERM_FAIL=1 makes that script fail like a broken install would.
+  writeFileSync(
+    join(bin, "curl"),
+    `#!/bin/sh\nfor url; do :; done\necho "$url" >> "$HOME/doriterm-installer-url"\nprintf '%s\\n' 'echo "$*" >> "$HOME/doriterm-installer-args"; [ -z "$DORITERM_FAIL" ]'\n`,
+  );
+  chmodSync(join(bin, "curl"), 0o755);
   const upstreamCommit = (text: string) => {
     writeFileSync(join(upstream, cli), text);
     git(upstream, "commit", "-qam", text.trim());
@@ -54,15 +62,23 @@ function setup() {
       env: {
         ...gitEnv,
         HOME: home,
+        XDG_STATE_HOME: join(home, ".local/state"),
+        XDG_CONFIG_HOME: join(home, ".config"),
         DORI_SRC: src,
         SKILLS_DIR: join(home, "skills"),
-        PATH: `${bin}:${process.env["PATH"]}`,
+        // Only the system directories beside the stubs, so a doriface-host on the developer's PATH is not seen.
+        PATH: `${bin}:${gitDir}:/usr/bin:/bin`,
+        DORI_NO_DORITERM: "1",
         ...env,
       },
     });
     return { code: r.exitCode, err: r.stderr.toString() };
   };
-  return { root, upstream, src, home, cli, upstreamCommit, install };
+  const installerRuns = (): string[] => {
+    const file = join(home, "doriterm-installer-args");
+    return existsSync(file) ? readFileSync(file, "utf8").trim().split("\n") : [];
+  };
+  return { root, upstream, src, home, bin, cli, upstreamCommit, install, installerRuns };
 }
 
 test("a second install over a clean checkout pulls upstream", () => {
@@ -157,4 +173,63 @@ test("a failed fetch is not taken for local work: no reset is suggested", () => 
   expect(r.code).toBe(1);
   expect(r.err).toContain("missing.git");
   expect(r.err).not.toContain("reset --hard");
+});
+
+test("a machine with no Doriterm gets it from Doriterm's installer, without the pairing printout", () => {
+  // Given a home with no Doriterm host.
+  const { home, install, installerRuns } = setup();
+  // When install.sh runs with the Doriterm step on.
+  const r = install({ DORI_NO_DORITERM: "" });
+  // Then the installer ran once with --no-pair, and Dori was installed after it.
+  expect(r.code).toBe(0);
+  expect(installerRuns()).toEqual(["--no-pair"]);
+  expect(readFileSync(join(home, "doriterm-installer-url"), "utf8").trim()).toBe("https://get.doriterm.com");
+  expect(existsSync(join(home, ".dori/config.json"))).toBe(true);
+});
+
+test.each([
+  ["the installer's or the desktop app's state dir", ".local/state/doriface-host"],
+  ["a checkout setup's state dir", ".local/state/doriface-host-mesh"],
+  ["a systemd user unit", ".config/systemd/user/doriface-host.service"],
+  ["a LaunchAgent", "Library/LaunchAgents/com.sisyphuslabs.doriface-host.plist"],
+  ["the installed binary off PATH", ".local/bin/doriface-host"],
+])("a machine with %s keeps its Doriterm host", (_what, mark) => {
+  // Given a home holding one mark of an existing Doriterm host.
+  const { home, install, installerRuns } = setup();
+  mkdirSync(dirname(join(home, mark)), { recursive: true });
+  writeFileSync(join(home, mark), "");
+  // When install.sh runs with the Doriterm step on; then it does not run the installer.
+  expect(install({ DORI_NO_DORITERM: "" }).code).toBe(0);
+  expect(installerRuns()).toEqual([]);
+});
+
+test("doriface-host on PATH counts as an installed Doriterm", () => {
+  // Given a doriface-host on PATH.
+  const { bin, install, installerRuns } = setup();
+  writeFileSync(join(bin, "doriface-host"), "#!/bin/sh\nexit 0\n");
+  chmodSync(join(bin, "doriface-host"), 0o755);
+  // When install.sh runs with the Doriterm step on; then the installer does not run.
+  expect(install({ DORI_NO_DORITERM: "" }).code).toBe(0);
+  expect(installerRuns()).toEqual([]);
+});
+
+test("a failed Doriterm install stops before Dori is installed and names the way around it", () => {
+  // Given an installer that fails.
+  const { home, install } = setup();
+  // When install.sh runs with the Doriterm step on.
+  const r = install({ DORI_NO_DORITERM: "", DORITERM_FAIL: "1" });
+  // Then it fails, says how to install without Doriterm, and has not written Dori's config.
+  expect(r.code).toBe(1);
+  expect(r.err).toContain("DORI_NO_DORITERM=1");
+  expect(existsSync(join(home, ".dori/config.json"))).toBe(false);
+});
+
+test("DORI_NO_DORITERM=1 skips Doriterm", () => {
+  // Given a home with no Doriterm host; when install.sh runs with the default test env (DORI_NO_DORITERM=1).
+  const { install, installerRuns } = setup();
+  const r = install();
+  // Then the installer never ran and the skip is said.
+  expect(r.code).toBe(0);
+  expect(installerRuns()).toEqual([]);
+  expect(r.err).toContain("skipping Doriterm");
 });

@@ -4,7 +4,7 @@
   "description": "A proactive multi-session coding-agent harness in ~1,600 lines, running on herdr + omo.",
   "type": "module",
   "license": "SUL-1.0",
-  "packageManager": "bun@1.4.4",
+  "packageManager": "bun@1.4.5",
   "bin": {
     "dori": "src/cli.ts"
   },
@@ -13,18 +13,22 @@
     "fmt": "biome format --write .",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p skills/dori-mode/scripts/tsconfig.json",
     "lint:loc": "bun scripts/check-loc.ts",
+    "lint:ratchet": "bun scripts/lint-ratchet.ts",
+    "lint:ratchet:update": "bun scripts/lint-ratchet.ts --update",
     "knip": "knip",
-    "test": "bun test ./test/",
+    "test": "bun test ./test/ ./scripts/",
     "test:skill": "cd skills/dori-mode/scripts && bun test",
-    "ci": "bun run check && bun run typecheck && bun run knip && bun run lint:loc && bun run test && bun run test:skill"
+    "ci": "bun run check && bun run typecheck && bun run knip && bun run lint:loc && bun run lint:ratchet && bun run test && bun run test:skill"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.6.6",
-    "@types/bun": "^1.4.4",
-    "knip": "^6.44.2",
-    "typescript": "^5.9"
+    "@biomejs/biome": "^2.6.8",
+    "@types/bun": "^1.4.5",
+    "knip": "^6.47.0",
+    "oxc-parser": "0.159.0",
+    "oxlint": "1.94.0",
+    "typescript": "^7.0.2"
   },
   "engines": {
-    "bun": ">=1.4.4"
+    "bun": ">=1.4.5"
   }
 }

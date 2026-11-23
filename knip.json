@@ -13,5 +13,9 @@
     "skills/dori-mode/scripts/src/**/*.ts",
     "skills/dori-mode/scripts/test/**/*.ts"
   ],
-  "ignoreExportsUsedInFile": true
+  "ignoreExportsUsedInFile": true,
+  "oxlint": {
+    "config": ["scripts/lint-ratchet.oxlintrc.json"]
+  },
+  "ignoreDependencies": ["oxlint"]
 }

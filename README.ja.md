@@ -55,7 +55,7 @@ Slackでは、Doriをどう見せるかをセットアップ時に選びます�
 
 ### Dori mode、あなたが話しかけるボット
 
-herdr、Bun 1.4.4以降、git、GitHub CLIの `gh` が必要です。
+herdr、Bun 1.4.5以降、git、GitHub CLIの `gh` が必要です。
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superagent/main/install.sh | bash
@@ -69,7 +69,7 @@ curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superagent/main/i
 
 ### ハーネス
 
-Bun 1.4.4以降、herdr、omo、`gh`（PRのhead SHA、チェック、マージに使います）が必要です。
+Bun 1.4.5以降、herdr、omo、`gh`（PRのhead SHA、チェック、マージに使います）が必要です。
 
 ```sh
 git clone https://github.com/sisyphuslabs/dori-superagent

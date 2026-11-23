@@ -35,6 +35,32 @@ describe("typed text, shells, keys", () => {
     expect(await rt.read(T1, 40)).toBe("line a\nline b");
     expect(fake.calls).toEqual([["read", "t1", "--lines", "40"]]);
   });
+
+  test("an unwrapped read joins the rows the terminal wrapped at its width, and only those", async () => {
+    // Rows of exactly `cols` characters were cut by the terminal; a shorter row ends its line.
+    const screen = ["Warning: Failed to", " load ext x", "next line", "0123456789", "ab", "$ "].join("\n");
+    const { fake, rt } = rig({ t1: terminal({ screen, cols: 18 }) });
+    expect(await rt.read(T1, 40, { unwrapped: true })).toBe(
+      ["Warning: Failed to load ext x", "next line", "0123456789", "ab", "$ "].join("\n"),
+    );
+    expect(fake.calls).toEqual([
+      ["read", "t1", "--lines", "40"],
+      ["get", "t1"],
+    ]);
+    // A wrap on a space comes back one cell short (hc cuts the blank), and the join puts that space back.
+    const spaced = ["Error: rate", "limit hit", "$ "].join("\n");
+    const { rt: cut } = rig({ t1: terminal({ screen: spaced, cols: 12 }) });
+    expect(await cut.read(T1, 40, { unwrapped: true })).toBe(["Error: rate limit hit", "$ "].join("\n"));
+    // Width is counted in cells, not code units: nine CJK characters fill 18 cells.
+    const wide = ["完了完了完了完了完", "了 path", "完了 short", "$ "].join("\n");
+    const { rt: cells } = rig({ t1: terminal({ screen: wide, cols: 18 }) });
+    expect(await cells.read(T1, 40, { unwrapped: true })).toBe(
+      ["完了完了完了完了完了 path", "完了 short", "$ "].join("\n"),
+    );
+    // Without a width the text comes back as read.
+    const { rt: noCols } = rig({ t1: terminal({ screen }) });
+    expect(await noCols.read(T1, 40, { unwrapped: true })).toBe(screen);
+  });
 });
 
 describe("close, list, self", () => {

@@ -8,6 +8,7 @@ import type {
   Key,
   Probe,
   SessionInfo,
+  ReadOptions,
   SessionRef,
   SessionRuntime,
   SubmitResult,
@@ -64,8 +65,8 @@ export class HerdrRuntime implements SessionRuntime {
     return probe(this.cli, ref.id);
   }
 
-  read(ref: SessionRef, lines: number): Promise<string> {
-    return this.cli.read(ref.id, lines);
+  read(ref: SessionRef, lines: number, opts?: ReadOptions): Promise<string> {
+    return this.cli.read(ref.id, lines, opts?.unwrapped ? "recent-unwrapped" : "recent");
   }
 
   /** herdr types whatever the status word says (the caller decided), so `when` and `force` change nothing here. */

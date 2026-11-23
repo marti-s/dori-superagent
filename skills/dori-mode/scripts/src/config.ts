@@ -34,6 +34,8 @@ export type DoriConfig = {
   readonly defaultModel: string;
   readonly launchKeywords: string;
   readonly goalMarker: string;
+  /** How long `launch` waits for the agent's ready status and goal after it starts; a slow host is a host property. */
+  readonly startupWaitSeconds: number;
   readonly sessionsDir: string;
   readonly nudgeAfterMin: number;
   readonly postAfterMin: number;
@@ -59,6 +61,7 @@ export const defaultConfig = (home = homedir()): DoriConfig => ({
   defaultModel: "anthropic/claude-opus-5-5",
   launchKeywords: "ulw set goal and work",
   goalMarker: "Pursuing goal",
+  startupWaitSeconds: 180,
   sessionsDir: join(home, ".omo", "agent", "sessions"),
   nudgeAfterMin: 15,
   postAfterMin: 20,
@@ -179,6 +182,13 @@ export const loadConfig = async (path = configPath(), home = homedir()): Promise
     repoIdentities: repoIdentities(raw.repoIdentities),
     // Only a string is a marker: null or false would quietly turn the goal check off, and an object would never show.
     goalMarker: typeof raw.goalMarker === "string" ? raw.goalMarker : base.goalMarker,
+    // Only a nonnegative number is a wait: a string or null would otherwise end every launch at the first check.
+    startupWaitSeconds:
+      typeof raw.startupWaitSeconds === "number" &&
+      Number.isFinite(raw.startupWaitSeconds) &&
+      raw.startupWaitSeconds >= 0
+        ? raw.startupWaitSeconds
+        : base.startupWaitSeconds,
     supervision: {
       ...base.supervision,
       ...raw.supervision,

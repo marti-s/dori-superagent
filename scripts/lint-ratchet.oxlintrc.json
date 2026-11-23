@@ -1,0 +1,13 @@
+{
+  "$schema": "../node_modules/oxlint/configuration_schema.json",
+  "plugins": [],
+  "jsPlugins": ["./oxlint/testing.ts"],
+  "categories": {
+    "correctness": "off"
+  },
+  "rules": {
+    "dori-testing/no-fixed-sleep": "error",
+    "dori-testing/no-flake-masking": "error",
+    "dori-testing/no-module-mock": "error"
+  }
+}

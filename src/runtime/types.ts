@@ -56,6 +56,8 @@ export type DeliverOutcome =
 export type SubmitResult = "submitted" | "wait" | "changed";
 export type Key = "enter" | "escape";
 export type CloseScope = "session" | "container";
+/** `unwrapped`: a line the terminal wrapped over several rows comes back as one line, not one line per row. */
+export type ReadOptions = { readonly unwrapped?: boolean };
 export interface SessionRuntime {
   readonly kind: RuntimeKind;
   /** The caller's own session from the runtime's env (HERDR_PANE_ID + HERDR_WORKSPACE_ID / HC_TERMINAL_ID), or undefined. */
@@ -68,7 +70,8 @@ export interface SessionRuntime {
   start(ref: SessionRef, command: string): Promise<void>;
   list(filter?: { readonly group?: string }): Promise<readonly SessionInfo[]>;
   probe(ref: SessionRef): Promise<Probe>;
-  read(ref: SessionRef, lines: number): Promise<string>;
+  /** herdr: `pane read --source recent` (`recent-unwrapped` when unwrapped). hc: `read`; unwrapped joins rows as wide as the terminal's `cols`. */
+  read(ref: SessionRef, lines: number, opts?: ReadOptions): Promise<string>;
   /** Never types into a session whose probe says shellInFront, whatever `status` says. Default `when` = "idle". */
   deliver(ref: SessionRef, text: string, opts?: DeliverOptions): Promise<DeliverOutcome>;
   submitTyped(ref: SessionRef, into: AgentIdentity): Promise<SubmitResult>;
